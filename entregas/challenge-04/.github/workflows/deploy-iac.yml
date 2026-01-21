@@ -14,7 +14,7 @@ on:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  TF_WORKING_DIR: technical-challenges/entregas/challenge-04
+  TF_WORKING_DIR: technical-challenges/entregas/challenge-04/iac
 
 jobs:
   terraform-plan-apply:
