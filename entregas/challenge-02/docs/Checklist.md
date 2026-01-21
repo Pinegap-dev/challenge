@@ -27,7 +27,7 @@ Objetivo: entregar a arquitetura e provisionamento para o app bioinformatica (fr
 3) Guardar URIs para usar no Terraform/manifests.
 
 ## Fase 2 - Provisionar base (Terraform)
-1) Diretório: `entregas/challenge-02/iac/` (reutiliza modulos do challenge 04).
+1) Diretório: `entregas/challenge-02/iac/` (módulos locais em `iac/modules/`).
 2) Ajustar variaveis em `main.tf`: `region`, `environment`, `db_password`, `batch_job_image`, tamanhos e tags.
 3) Executar:
    ```bash

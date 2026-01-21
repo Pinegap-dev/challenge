@@ -21,15 +21,32 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
+          env:
+            - name: LOG_LEVEL
+              value: "info"
+            # Exemplo de variavel apontando para bucket/resultados se necessario
+            # - name: RESULTS_BUCKET
+            #   value: "s3://results-bucket"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           readinessProbe:
             httpGet:
-              path: /
+              path: /health
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3

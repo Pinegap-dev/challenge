@@ -2,13 +2,13 @@
 
 Objetivo: entregar a base de IaC em Terraform (modular) para o cenário Next.js frontend + API FastAPI + pipeline Batch/Step Functions na AWS, com buckets S3, Aurora, ECR, EKS e rede completa.
 
-## Modulos/arquitetura (alto nivel)
-- `modules/network`: VPC multi-AZ, sub-redes pub/priv, NAT, IGW, rotas, SGs (ALB/EKS/RDS).
-- `modules/kms` + `modules/s3`: chave KMS e buckets uploads (365d) e resultados (5y) com SSE-KMS e block public.
-- `modules/ecr`: repos ECR para frontend, api e batch (scan on push).
-- `modules/rds`: Aurora Postgres multi-AZ criptografado.
-- `modules/eks`: cluster EKS + node group base com roles/attachments.
-- `modules/batch_sfn`: Batch (Fargate/EC2) + Step Functions para orquestracao de jobs.
+## Modulos/arquitetura (alto nivel) em `iac/modules/`
+- `network`: VPC multi-AZ, sub-redes pub/priv, NAT, IGW, rotas, SGs (ALB/EKS/RDS).
+- `kms` + `s3`: chave KMS e buckets uploads (365d) e resultados (5y) com SSE-KMS e block public.
+- `ecr`: repos ECR para frontend, api e batch (scan on push).
+- `rds`: Aurora Postgres multi-AZ criptografado.
+- `eks`: cluster EKS + node group base com roles/attachments.
+- `batch_sfn`: Batch (Fargate/EC2) + Step Functions para orquestracao de jobs.
 
 ## Fase 0 - Preparacao
 1) Requisitos: AWS CLI, Terraform >= 1.6, Docker se for buildar imagens.
@@ -16,7 +16,7 @@ Objetivo: entregar a base de IaC em Terraform (modular) para o cenário Next.js 
 3) Clonar repo e criar branch pessoal.
 
 ## Fase 1 - Configurar e aplicar Terraform
-1) Diretorio: `entregas/challenge-04/iac/`.
+1) Diretorio: `entregas/challenge-04/iac/` (modulos agora dentro de `iac/modules/`).
 2) Ajustar variaveis em `iac/main.tf`: `db_password`, `region`, `environment`, `batch_job_image`, classes de RDS/node group, tags. Se usar borda: `enable_edge`, `domain_name`, `hosted_zone_id`, `origin_domain_name`, opcional `acm_certificate_arn`, `enable_waf`.
 3) Executar por ambiente (ex. hml):
    ```bash
@@ -35,7 +35,7 @@ Objetivo: entregar a base de IaC em Terraform (modular) para o cenário Next.js 
    - Batch worker -> ECR batch (ou imagem apontada em `batch_job_image`).
 2) EKS:
    - Instalar ALB Ingress Controller, Cluster Autoscaler, habilitar IRSA.
-   - Deploy FastAPI via Helm/manifests, criar Ingress -> ALB.
+   - Deploy FastAPI via Helm/manifests, criar Ingress -> ALB (usar vars `API_HOST`, `FRONT_HOST`, `ALB_CERT_ARN`, `API_BASE_URL`).
 3) Front:
    - Se static: S3 + CloudFront (usar modulo `edge` para a distro; buckets estaticos precisam ser adicionados).
    - Se SSR/ISR: CloudFront + ALB/App Runner/ECS (estender IaC e usar `edge` com origin para o ALB/Ingress).

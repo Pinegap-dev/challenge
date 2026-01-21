@@ -36,6 +36,7 @@ jobs:
           TASK_IMAGE: ${{ vars.TASK_IMAGE }}
           ADMIN_USER: ${{ secrets.ADMIN_USER }}
           ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
+          PROJECT: ${{ vars.PROJECT || 'challenge01' }}
         run: |
           set -euo pipefail
           : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
@@ -64,6 +65,24 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Gerar arquivo apply.fvars
+        env:
+          TASK_IMAGE: ${{ vars.TASK_IMAGE }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER }}
+          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
+          PROJECT: ${{ vars.PROJECT || 'challenge01' }}
+        run: |
+          cat > apply.fvars <<'EOF'
+          region        = "${AWS_REGION}"
+          environment   = "${{ steps.env.outputs.env_name }}"
+          project       = "${PROJECT}"
+          vpc_cidr      = "10.1.0.0/16"
+          task_image    = "${TASK_IMAGE}"
+          admin_user    = "${ADMIN_USER}"
+          admin_pass    = "${ADMIN_PASS}"
+          desired_count = 2
+          EOF
+
       - name: terraform init
         run: terraform init -input=false
 
@@ -74,26 +93,8 @@ jobs:
         run: terraform validate
 
       - name: terraform plan
-        env:
-          TASK_IMAGE: ${{ vars.TASK_IMAGE }}
-          ADMIN_USER: ${{ secrets.ADMIN_USER }}
-          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
-        run: |
-          EXTRA_VARS=()
-          EXTRA_VARS+=("-var" "task_image=${TASK_IMAGE}")
-          EXTRA_VARS+=("-var" "admin_user=${ADMIN_USER}")
-          EXTRA_VARS+=("-var" "admin_pass=${ADMIN_PASS}")
-          terraform plan -input=false -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+        run: terraform plan -input=false -var-file="apply.fvars"
 
       - name: terraform apply
         if: github.event_name != 'pull_request'
-        env:
-          TASK_IMAGE: ${{ vars.TASK_IMAGE }}
-          ADMIN_USER: ${{ secrets.ADMIN_USER }}
-          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
-        run: |
-          EXTRA_VARS=()
-          EXTRA_VARS+=("-var" "task_image=${TASK_IMAGE}")
-          EXTRA_VARS+=("-var" "admin_user=${ADMIN_USER}")
-          EXTRA_VARS+=("-var" "admin_pass=${ADMIN_PASS}")
-          terraform apply -input=false -auto-approve -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+        run: terraform apply -input=false -auto-approve -var-file="apply.fvars"

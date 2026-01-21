@@ -3,10 +3,10 @@
 Arquivos: `.github/workflows/deploy-iac.yml` (infra) e `.github/workflows/deploy-app.yml` (aplicaçao) dentro deste desafio. Ambos usam AWS + Kubernetes (EKS) e mantêm os artefatos em `entregas/challenge-02`.
 
 ## deploy-iac.yml (IaC Terraform)
-- **Caminho IaC:** `technical-challenges/entregas/challenge-02/iac` (reutiliza módulos do challenge-04).
+- **Caminho IaC:** `technical-challenges/entregas/challenge-02/iac` (módulos locais em `iac/modules/`).
 - **O que faz:** init/fmt/validate/plan/apply do Terraform para VPC, KMS/S3, ECR, Aurora, EKS, Batch/Step Functions. Seleciona `hml` (develop) ou `prod` (main) ou entrada manual.
 - **Segredos/vars:** `AWS_ROLE_TO_ASSUME` (obrigatório), `TF_VAR_DB_PASSWORD` (secret), `BATCH_JOB_IMAGE` (var opcional), `AWS_REGION`.
-- **Gatilhos:** push em `main`/`develop` que atinjam `entregas/challenge-02` ou os módulos herdados de `entregas/challenge-04/modules`, ou manual.
+- **Gatilhos:** push em `main`/`develop` que atinjam `entregas/challenge-02`, ou manual.
 - **Saída esperada:** state aplicado e outputs do Terraform (VPC, buckets, Aurora, EKS, Batch/SFN).
 
 ## deploy-app.yml (Aplicação em Kubernetes)

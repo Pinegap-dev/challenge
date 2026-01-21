@@ -35,12 +35,27 @@ jobs:
           AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           LAMBDA_IMAGE_URI: ${{ vars.LAMBDA_IMAGE_URI }}
           NAME_VALUE: ${{ vars.NAME_VALUE }}
+          PROJECT: ${{ vars.PROJECT || 'challenge03' }}
         run: |
           set -euo pipefail
           : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
           : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
           : "${LAMBDA_IMAGE_URI:?Defina LAMBDA_IMAGE_URI em Actions Variables (ECR URI)}"
           : "${NAME_VALUE:?Defina NAME_VALUE em Actions Variables}"
+
+      - name: Gerar arquivo apply.fvars
+        env:
+          LAMBDA_IMAGE_URI: ${{ vars.LAMBDA_IMAGE_URI }}
+          NAME_VALUE: ${{ vars.NAME_VALUE }}
+          PROJECT: ${{ vars.PROJECT || 'challenge03' }}
+        run: |
+          cat > apply.fvars <<'EOF'
+          region          = "${AWS_REGION}"
+          environment     = "${{ steps.env.outputs.env_name }}"
+          project         = "${PROJECT}"
+          lambda_image_uri = "${LAMBDA_IMAGE_URI}"
+          name_value      = "${NAME_VALUE}"
+          EOF
 
       - name: Selecionar ambiente
         id: env
@@ -72,22 +87,8 @@ jobs:
         run: terraform validate
 
       - name: terraform plan
-        env:
-          LAMBDA_IMAGE_URI: ${{ vars.LAMBDA_IMAGE_URI }}
-          NAME_VALUE: ${{ vars.NAME_VALUE }}
-        run: |
-          EXTRA_VARS=()
-          EXTRA_VARS+=("-var" "lambda_image_uri=${LAMBDA_IMAGE_URI}")
-          EXTRA_VARS+=("-var" "name_value=${NAME_VALUE}")
-          terraform plan -input=false -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+        run: terraform plan -input=false -var-file="apply.fvars"
 
       - name: terraform apply
         if: github.event_name != 'pull_request'
-        env:
-          LAMBDA_IMAGE_URI: ${{ vars.LAMBDA_IMAGE_URI }}
-          NAME_VALUE: ${{ vars.NAME_VALUE }}
-        run: |
-          EXTRA_VARS=()
-          EXTRA_VARS+=("-var" "lambda_image_uri=${LAMBDA_IMAGE_URI}")
-          EXTRA_VARS+=("-var" "name_value=${NAME_VALUE}")
-          terraform apply -input=false -auto-approve -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+        run: terraform apply -input=false -auto-approve -var-file="apply.fvars"

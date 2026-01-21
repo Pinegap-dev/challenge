@@ -55,5 +55,5 @@
   - [x] Definir arquitetura alvo (camadas web, API, dados, processamento batch, observabilidade, seguranca, custo)
   - [x] Redigir Terraform (modular) com recursos essenciais (VPC, EKS, RDS, S3, IAM, ECR, Step Functions, Batch) evitando modulos custom
   - [x] Planejar/configurar pipelines GitHub Actions (build/test -> terraform plan/apply -> build/publish imagens -> deploy hml/prod)
-  - [x] Documentar IaC em `entregas/challenge-04/README.md`; restante (pipelines/Pages) pendente
-  - [x] Gerar diagrama(s)  e salvar em `entregas/challenge-04/diagramas/`
+- [x] Documentar IaC em `entregas/challenge-04/docs/README.md` (IaC em `iac/`, modulos em `iac/modules/`, edge opcional); pipelines prontas
+- [x] Gerar diagrama(s) e salvar em `entregas/challenge-04/diagramas/`

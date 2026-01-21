@@ -15,12 +15,12 @@
 1) Trigger:
    - push para `develop` -> deploy staging
    - push para `main` -> deploy prod (com aprovacao opcional)
-2) Passos:
+2) Passos (workflow `deploy-app.yml`):
    - Lint/test (ruff/black/pytest)
    - Build imagem, push para ECR com tag do SHA
-   - `aws lambda update-function-code --function-name <fn> --image-uri <tag>`
-   - `aws lambda update-alias --function-name <fn> --name <alias> --function-version <versao>` (capturar da chamada de update)
-   - Atualizar stage do API Gateway se necessario
+   - `aws lambda update-function-code --function-name <fn> --image-uri <tag> --publish`
+   - `aws lambda update-function-configuration --environment Variables={NAME=<valor>}`
+   - `aws lambda update-alias --function-name <fn> --name <alias> --function-version <versao>` (ou cria alias se nao existir)
 3) Secrets/vars no GitHub:
    - `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `ECR_REPOSITORY`, `LAMBDA_FUNCTION_NAME`
-   - `STG_NAME`, `PROD_NAME` (ou usar SSM e apenas referenciar os parametros)
+   - `NAME_VALUE` (default) ou `NAME_VALUE_STAGING`/`NAME_VALUE_PROD` (ou usar SSM e apenas referenciar os parametros)

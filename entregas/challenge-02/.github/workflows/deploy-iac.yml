@@ -36,12 +36,23 @@ jobs:
           AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
           BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+          PROJECT: ${{ vars.PROJECT || 'challenge02' }}
+          ENABLE_EDGE: ${{ vars.ENABLE_EDGE }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
+          ORIGIN_DOMAIN_NAME: ${{ vars.ORIGIN_DOMAIN_NAME }}
         run: |
           set -euo pipefail
           : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
           : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
           : "${DB_PASSWORD:?Defina TF_VAR_DB_PASSWORD em Actions Secrets}"
           : "${BATCH_JOB_IMAGE:?Defina BATCH_JOB_IMAGE em Actions Variables}"
+          # Edge opcional, mas se habilitar tem que preencher todos
+          if [ "${ENABLE_EDGE:-false}" = "true" ]; then
+            : "${DOMAIN_NAME:?Defina DOMAIN_NAME em Actions Variables quando ENABLE_EDGE=true}"
+            : "${HOSTED_ZONE_ID:?Defina HOSTED_ZONE_ID em Actions Variables quando ENABLE_EDGE=true}"
+            : "${ORIGIN_DOMAIN_NAME:?Defina ORIGIN_DOMAIN_NAME em Actions Variables quando ENABLE_EDGE=true}"
+          fi
 
       - name: Selecionar ambiente
         id: env
@@ -53,6 +64,40 @@ jobs:
           else
             echo "env_name=hml" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Gerar arquivo apply.fvars
+        env:
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+          PROJECT: ${{ vars.PROJECT || 'challenge02' }}
+          ENABLE_EDGE: ${{ vars.ENABLE_EDGE || 'false' }}
+          ENABLE_WAF: ${{ vars.ENABLE_WAF || 'false' }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME || '' }}
+          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID || '' }}
+          ORIGIN_DOMAIN_NAME: ${{ vars.ORIGIN_DOMAIN_NAME || '' }}
+          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN || '' }}
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL || '' }}
+          ROTATION_APP_VERSION: ${{ vars.ROTATION_APP_VERSION || '1.1.0' }}
+        run: |
+          cat > apply.fvars <<'EOF'
+          region             = "${AWS_REGION}"
+          environment        = "${{ steps.env.outputs.env_name }}"
+          project            = "${PROJECT}"
+          vpc_cidr           = "10.2.0.0/16"
+          az_count           = 2
+          db_username        = "dbadmin"
+          db_password        = "${DB_PASSWORD}"
+          batch_job_image    = "${BATCH_JOB_IMAGE}"
+          allowed_egress_cidr = "0.0.0.0/0"
+          enable_edge        = ${ENABLE_EDGE}
+          enable_waf         = ${ENABLE_WAF}
+          domain_name        = "${DOMAIN_NAME}"
+          hosted_zone_id     = "${HOSTED_ZONE_ID}"
+          origin_domain_name = "${ORIGIN_DOMAIN_NAME}"
+          acm_certificate_arn = "${ACM_CERTIFICATE_ARN}"
+          alarm_email        = "${ALARM_EMAIL}"
+          rotation_app_version = "${ROTATION_APP_VERSION}"
+          EOF
 
       - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v3
@@ -77,10 +122,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
           BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
         run: |
-          EXTRA_VARS=()
-          EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
-          EXTRA_VARS+=("-var" "batch_job_image=${BATCH_JOB_IMAGE}")
-          terraform plan -input=false -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+          terraform plan -input=false -var-file="apply.fvars"
 
       - name: terraform apply
         if: github.event_name != 'pull_request'
@@ -88,7 +130,4 @@ jobs:
           DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
           BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
         run: |
-          EXTRA_VARS=()
-          EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
-          EXTRA_VARS+=("-var" "batch_job_image=${BATCH_JOB_IMAGE}")
-          terraform apply -input=false -auto-approve -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+          terraform apply -input=false -auto-approve -var-file="apply.fvars"

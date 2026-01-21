@@ -99,7 +99,9 @@ resource "aws_wafv2_web_acl" "this" {
   rule {
     name     = "AWS-AWSManagedRulesCommonRuleSet"
     priority = 1
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
@@ -162,7 +164,7 @@ resource "aws_cloudfront_distribution" "this" {
 
   tags = merge(local.tags, { Name = "${var.project}-${var.environment}-cf" })
 
-  depends_on = var.acm_certificate_arn != "" ? [] : [aws_acm_certificate_validation.this]
+  depends_on = [aws_acm_certificate_validation.this]
 }
 
 resource "aws_route53_record" "alias_cf" {

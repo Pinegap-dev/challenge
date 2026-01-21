@@ -1,0 +1,9 @@
+# Ignore Terraform local artifacts
+.terraform/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+
+# Ignore Python bytecode
+**/__pycache__/
+*.pyc

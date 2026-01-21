@@ -22,8 +22,8 @@ env:
   FRONT_DEPLOYMENT: ${{ vars.FRONT_DEPLOYMENT }}
   API_IMAGE: ${{ vars.API_IMAGE }}
   FRONT_IMAGE: ${{ vars.FRONT_IMAGE }}
-  API_CONTEXT: technical-challenges/devops/challenge-04/api
-  FRONT_CONTEXT: technical-challenges/devops/challenge-04/web
+  API_CONTEXT: technical-challenges/entregas/challenge-04/app/api
+  FRONT_CONTEXT: technical-challenges/entregas/challenge-04/app/web
 
 jobs:
   build-and-deploy:
@@ -130,13 +130,19 @@ jobs:
           FRONT_APP: ${{ env.FRONT_DEPLOYMENT }}
           API_IMAGE_URI: ${{ env.API_IMAGE_URI }}
           FRONT_IMAGE_URI: ${{ env.FRONT_IMAGE_URI }}
+          API_BASE_URL: ${{ vars.API_BASE_URL || 'http://api.example.com' }}
+          API_HOST: ${{ vars.API_HOST || 'api.example.com' }}
+          FRONT_HOST: ${{ vars.FRONT_HOST || 'web.example.com' }}
+          ALB_CERT_ARN: ${{ vars.ALB_CERT_ARN || '' }}
         run: |
           envsubst < technical-challenges/entregas/challenge-04/k8s/api-deployment.yaml > /tmp/api-deployment.yaml
           envsubst < technical-challenges/entregas/challenge-04/k8s/api-service.yaml > /tmp/api-service.yaml
           envsubst < technical-challenges/entregas/challenge-04/k8s/front-deployment.yaml > /tmp/front-deployment.yaml
           envsubst < technical-challenges/entregas/challenge-04/k8s/front-service.yaml > /tmp/front-service.yaml
+          envsubst < technical-challenges/entregas/challenge-04/k8s/ingress.yaml > /tmp/ingress.yaml
 
       - name: Deploy para Kubernetes
         run: |
           kubectl apply -f /tmp/api-deployment.yaml -f /tmp/api-service.yaml
           kubectl apply -f /tmp/front-deployment.yaml -f /tmp/front-service.yaml
+          kubectl apply -f /tmp/ingress.yaml

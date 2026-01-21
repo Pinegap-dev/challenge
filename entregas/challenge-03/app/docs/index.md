@@ -10,8 +10,8 @@
 
 ## Deploy serverless (resumo)
 - API Gateway HTTP -> Lambda (container no ECR); aliases `staging` e `prod`.
-- Variavel `NAME` por ambiente (SSM ou env).
-- Workflow GitHub Actions `ci-cd.yml` publica imagem e atualiza aliases/stages conforme branch.
+- Variavel `NAME` por ambiente (env setada no deploy; pode vir de SSM).
+- Workflow GitHub Actions `deploy-app.yml` publica imagem, atualiza a Lambda e o alias conforme branch (develop->staging, main->prod).
 
 ## Publicacao no GitHub Pages
 - Publicar esta pasta via workflow Pages (ex.: acao `actions/upload-pages-artifact` + `actions/deploy-pages`).

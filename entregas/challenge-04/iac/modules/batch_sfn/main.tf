@@ -70,9 +70,9 @@ resource "aws_iam_role_policy_attachment" "batch_task_policy" {
 }
 
 resource "aws_batch_compute_environment" "fargate" {
-  compute_environment_name = "${var.project}-${var.environment}-batch-ce"
-  service_role             = aws_iam_role.batch_service.arn
-  type                     = "FARGATE"
+  name         = "${var.project}-${var.environment}-batch-ce"
+  service_role = aws_iam_role.batch_service.arn
+  type         = "MANAGED"
 
   compute_resources {
     max_vcpus = 32
@@ -85,11 +85,16 @@ resource "aws_batch_compute_environment" "fargate" {
 }
 
 resource "aws_batch_job_queue" "default" {
-  name                 = "${var.project}-${var.environment}-batch-queue"
-  priority             = 1
-  state                = "ENABLED"
-  compute_environments = [aws_batch_compute_environment.fargate.arn]
-  tags                 = merge(local.tags, { Name = "${var.project}-${var.environment}-batch-queue" })
+  name     = "${var.project}-${var.environment}-batch-queue"
+  priority = 1
+  state    = "ENABLED"
+
+  compute_environment_order {
+    order               = 1
+    compute_environment = aws_batch_compute_environment.fargate.arn
+  }
+
+  tags = merge(local.tags, { Name = "${var.project}-${var.environment}-batch-queue" })
 }
 
 resource "aws_batch_job_definition" "default" {

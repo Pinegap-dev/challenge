@@ -8,7 +8,7 @@
 
 ## Visao geral
 - Arquitetura: VPC 2+ AZ, ALB/Ingress, EKS (Django frontend + FastAPI), Aurora Postgres, S3 (uploads 365d, resultados 5y, SSE-KMS), ECR (imagens), Step Functions + Batch (Fargate/Spot), observabilidade (CloudWatch, opcional Prometheus/Grafana).
-- IaC base em `entregas/challenge-02/iac/` reutilizando modulos do challenge 04.
+- IaC base em `entregas/challenge-02/iac/` com módulos locais em `iac/modules/` (network, kms, s3, ecr, rds, eks, batch_sfn).
 
 ## Passo a passo com Terraform
 1) Configure variaveis em `entregas/challenge-02/iac/main.tf`:

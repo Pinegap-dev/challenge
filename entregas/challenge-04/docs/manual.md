@@ -7,7 +7,7 @@
 
 ## Visao geral
 - IaC modular em `entregas/challenge-04/iac/`:
-  - `main.tf` consome modulos `network`, `kms`, `s3`, `ecr`, `rds`, `eks`, `batch_sfn`.
+  - `main.tf` consome modulos `network`, `kms`, `s3`, `ecr`, `rds`, `eks`, `batch_sfn` localizados em `iac/modules/`.
   - Modulo opcional `edge` para CloudFront/Route53/ACM/WAF (habilitado com variavel `enable_edge` e preenchendo dominio/hosted zone/origin).
 - Cobertura: VPC multi-AZ, sub-redes pub/priv, SGs, buckets com lifecycle (365d uploads, 5y resultados) e SSE-KMS, ECR, Aurora Postgres, EKS, Batch+Step Functions.
 - Pendentes: borda (CloudFront/WAF/Route53/ALB) e pipelines CI/CD.

@@ -10,6 +10,7 @@ Use estes nomes exatamente em **Settings > Secrets and variables > Actions** do 
 - `K8S_NAMESPACE`: namespace onde a app roda.
 - `DEPLOYMENT_NAME`: nome do Deployment/Service Kubernetes.
 - `ADMIN_SECRET_NAME`: nome do Secret Kubernetes com credenciais admin.
+- `PROJECT`: (opcional) prefixo usado na IaC (default: challenge01).
 
 ## Actions Secrets (obrigatorias)
 - `AWS_ROLE_TO_ASSUME`: ARN da role com permissao em ECR/EKS/Terraform.

@@ -61,7 +61,7 @@ resource "aws_subnet" "public" {
 
 resource "aws_eip" "nat" {
   count = var.az_count
-  vpc   = true
+  domain = "vpc"
   tags  = merge(local.tags, { Name = "${var.project}-${var.environment}-nat-eip-${count.index}" })
 }
 

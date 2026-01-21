@@ -12,6 +12,9 @@
 ## Como acionar Batch/Step Functions?
 - API FastAPI usa role IRSA com permissoes `states:StartExecution` e `batch:SubmitJob`. State machine chama Batch queue/Job Definition com imagem `batch_job_image`. Jobs leem S3 uploads e gravam S3 resultados (lifecycle 365d/5y).
 
+## Como o front descobre a API?
+- Variavel `API_BASE_URL` injeta `NEXT_PUBLIC_API_BASE` no deployment do front. No ingress, hosts `API_HOST`/`FRONT_HOST` e opcional `ALB_CERT_ARN` cuidam de HTTPS via ALB.
+
 ## Seguranca e dados sensiveis?
 - Secrets em Secrets Manager/SSM; IRSA para pods; SGs restritos (ALB -> pods; pods -> RDS); KMS para S3; TLS em transito; WAF/CloudFront opcional via `edge`; CloudTrail/Config habilitados; roles least privilege.
 

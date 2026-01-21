@@ -1,0 +1,11 @@
+region          = "us-east-1"
+environment     = "hml"
+project         = "challenge01"
+vpc_cidr        = "10.1.0.0/16"
+task_image      = "000000000000.dkr.ecr.us-east-1.amazonaws.com/fastapi:latest"
+admin_user      = "admin"
+admin_pass      = "change-me"
+desired_count   = 2
+
+
+#este manifesto será gerado automaticamente pela pipeline recuperando todas as variaveis/secrets do vault do github actions

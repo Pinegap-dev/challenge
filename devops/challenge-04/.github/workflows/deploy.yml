@@ -14,8 +14,8 @@ on:
         default: "hml"
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  TF_WORKING_DIR: technical-challenges/entregas/challenge-04
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_WORKING_DIR: technical-challenges/entregas/challenge-04/iac
 
 jobs:
   deploy:
@@ -30,6 +30,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validar variaveis obrigatorias
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+          PROJECT: ${{ vars.PROJECT || 'biotech-x' }}
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
+          : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
+          : "${DB_PASSWORD:?Defina TF_VAR_DB_PASSWORD em Actions Secrets}"
+          : "${BATCH_JOB_IMAGE:?Defina BATCH_JOB_IMAGE em Actions Variables}"
+
       - name: Select environment
         id: env
         run: |
@@ -40,6 +54,36 @@ jobs:
           else
             echo "env_name=hml" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Gerar arquivo apply.fvars
+        env:
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+          PROJECT: ${{ vars.PROJECT || 'biotech-x' }}
+          ENABLE_EDGE: ${{ vars.ENABLE_EDGE }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
+          ORIGIN_DOMAIN_NAME: ${{ vars.ORIGIN_DOMAIN_NAME }}
+          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+          ENABLE_WAF: ${{ vars.ENABLE_WAF }}
+        run: |
+          cat > apply.fvars <<'EOF'
+          region             = "${AWS_REGION}"
+          environment        = "${{ steps.env.outputs.env_name }}"
+          project            = "${PROJECT}"
+          vpc_cidr           = "10.0.0.0/16"
+          az_count           = 2
+          db_username        = "dbadmin"
+          db_password        = "${DB_PASSWORD}"
+          batch_job_image    = "${BATCH_JOB_IMAGE}"
+          allowed_egress_cidr = "0.0.0.0/0"
+          enable_edge        = ${ENABLE_EDGE:-false}
+          enable_waf         = ${ENABLE_WAF:-false}
+          domain_name        = "${DOMAIN_NAME}"
+          hosted_zone_id     = "${HOSTED_ZONE_ID}"
+          origin_domain_name = "${ORIGIN_DOMAIN_NAME}"
+          acm_certificate_arn = "${ACM_CERTIFICATE_ARN}"
+          EOF
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -60,22 +104,8 @@ jobs:
         run: terraform validate
 
       - name: Terraform plan
-        env:
-          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
-        run: |
-          EXTRA_VARS=()
-          if [ -n "${DB_PASSWORD}" ]; then
-            EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
-          fi
-          terraform plan -input=false -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+        run: terraform plan -input=false -var-file="apply.fvars"
 
       - name: Terraform apply
         if: github.event_name != 'pull_request'
-        env:
-          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
-        run: |
-          EXTRA_VARS=()
-          if [ -n "${DB_PASSWORD}" ]; then
-            EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
-          fi
-          terraform apply -input=false -auto-approve -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+        run: terraform apply -input=false -auto-approve -var-file="apply.fvars"

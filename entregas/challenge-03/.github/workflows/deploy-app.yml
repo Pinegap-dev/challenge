@@ -16,9 +16,7 @@ on:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
-  DEPLOYMENT_NAME: ${{ vars.DEPLOYMENT_NAME }}
+  LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
   APP_CONTEXT: technical-challenges/entregas/challenge-03/app
   DOCKERFILE_PATH: technical-challenges/entregas/challenge-03/app/Dockerfile
 
@@ -32,24 +30,75 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Selecionar ambiente
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env_name=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "env_name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "env_name=staging" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Validar variaveis obrigatorias
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
           AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          EKS_CLUSTER_NAME: ${{ env.EKS_CLUSTER_NAME }}
-          K8S_NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          DEPLOYMENT_NAME: ${{ env.DEPLOYMENT_NAME }}
-          NAME_VALUE: ${{ vars.NAME_VALUE }}
+          LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          NAME_VALUE: ${{ vars.NAME_VALUE || '' }}
+          NAME_VALUE_STAGING: ${{ vars.NAME_VALUE_STAGING || vars.STG_NAME || '' }}
+          NAME_VALUE_PROD: ${{ vars.NAME_VALUE_PROD || vars.PROD_NAME || '' }}
         run: |
           set -euo pipefail
           : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
           : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
           : "${ECR_REPOSITORY:?Defina ECR_REPOSITORY em Actions Variables}"
-          : "${EKS_CLUSTER_NAME:?Defina EKS_CLUSTER_NAME em Actions Variables}"
-          : "${K8S_NAMESPACE:?Defina K8S_NAMESPACE em Actions Variables}"
-          : "${DEPLOYMENT_NAME:?Defina DEPLOYMENT_NAME em Actions Variables}"
-          : "${NAME_VALUE:?Defina NAME_VALUE em Actions Variables}"
+          : "${LAMBDA_FUNCTION_NAME:?Defina LAMBDA_FUNCTION_NAME em Actions Variables}"
+          # Pelo menos um valor de NAME deve existir (global ou por ambiente)
+          if [ -z "${NAME_VALUE}${NAME_VALUE_STAGING}${NAME_VALUE_PROD}" ]; then
+            echo "Defina NAME_VALUE ou NAME_VALUE_STAGING/NAME_VALUE_PROD em Actions Variables" >&2
+            exit 1
+          fi
+
+      - name: Definir NAME por ambiente
+        id: name_value
+        env:
+          NAME_GLOBAL: ${{ vars.NAME_VALUE || '' }}
+          NAME_STAGING: ${{ vars.NAME_VALUE_STAGING || vars.STG_NAME || '' }}
+          NAME_PROD: ${{ vars.NAME_VALUE_PROD || vars.PROD_NAME || '' }}
+        run: |
+          target="${{ steps.env.outputs.env_name }}"
+          if [ "$target" = "prod" ] && [ -n "$NAME_PROD" ]; then
+            name="$NAME_PROD"
+          elif [ "$target" = "staging" ] && [ -n "$NAME_STAGING" ]; then
+            name="$NAME_STAGING"
+          else
+            name="$NAME_GLOBAL"
+          fi
+          if [ -z "$name" ]; then
+            echo "NAME para ambiente $target nao definido" >&2
+            exit 1
+          fi
+          echo "value=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias de app e qualidade
+        run: |
+          pip install --upgrade pip
+          pip install -r "${APP_CONTEXT}/requirements.txt" ruff black pytest
+
+      - name: Lint e testes (ruff, black, pytest)
+        working-directory: ${{ env.APP_CONTEXT }}
+        run: |
+          ruff .
+          black --check .
+          pytest
 
       - name: Configurar credenciais AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -72,24 +121,29 @@ jobs:
           docker push "${IMAGE_URI}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
-      - name: Instalar ferramentas de deploy
-        run: sudo apt-get update && sudo apt-get install -y gettext-base
-
-      - name: Atualizar kubeconfig (EKS)
-        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
-
-      - name: Criar namespace se nao existir
-        run: kubectl get ns "${K8S_NAMESPACE}" || kubectl create ns "${K8S_NAMESPACE}"
-
-      - name: Renderizar manifests
+      - name: Atualizar Lambda (imagem)
         env:
+          FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
           IMAGE_URI: ${{ env.IMAGE_URI }}
-          APP_NAME: ${{ env.DEPLOYMENT_NAME }}
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          NAME_VALUE: ${{ vars.NAME_VALUE }}
         run: |
-          envsubst < technical-challenges/entregas/challenge-03/k8s/deployment.yaml > /tmp/deployment.yaml
-          envsubst < technical-challenges/entregas/challenge-03/k8s/service.yaml > /tmp/service.yaml
+          set -euo pipefail
+          VERSION=$(aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$IMAGE_URI" --publish --query 'Version' --output text)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Deploy para Kubernetes
-        run: kubectl apply -f /tmp/deployment.yaml -f /tmp/service.yaml
+      - name: Definir variaveis da Lambda
+        env:
+          FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          NAME_VALUE: ${{ steps.name_value.outputs.value }}
+        run: |
+          set -euo pipefail
+          aws lambda update-function-configuration --function-name "$FUNCTION_NAME" --environment "Variables={NAME=${NAME_VALUE}}"
+
+      - name: Atualizar alias por ambiente
+        env:
+          FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          ALIAS_NAME: ${{ steps.env.outputs.env_name }}
+          VERSION: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          aws lambda update-alias --function-name "$FUNCTION_NAME" --name "$ALIAS_NAME" --function-version "$VERSION" \
+            || aws lambda create-alias --function-name "$FUNCTION_NAME" --name "$ALIAS_NAME" --function-version "$VERSION"

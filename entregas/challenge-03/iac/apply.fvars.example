@@ -1,0 +1,7 @@
+region        = "us-east-1"
+environment   = "hml"
+project       = "challenge03"
+lambda_image_uri = "000000000000.dkr.ecr.us-east-1.amazonaws.com/challenge-03:latest"
+name_value    = "World"
+
+#este manifesto será gerado automaticamente pela pipeline recuperando todas as variaveis/secrets do vault do github actions

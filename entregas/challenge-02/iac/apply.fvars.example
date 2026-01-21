@@ -1,0 +1,20 @@
+region              = "us-east-1"
+environment         = "hml"
+project             = "challenge02"
+vpc_cidr            = "10.2.0.0/16"
+az_count            = 2
+db_username         = "dbadmin"
+db_password         = "CHANGE_ME"
+batch_job_image     = "public.ecr.aws/amazonlinux/amazonlinux:latest"
+allowed_egress_cidr = "0.0.0.0/0"
+enable_edge         = false
+enable_waf          = false
+domain_name         = ""
+hosted_zone_id      = ""
+origin_domain_name  = ""
+acm_certificate_arn = ""
+alarm_email         = ""
+rotation_app_version = "1.1.0"
+
+
+# este manifesto sera gerado automaticamente pela pipeline recuperando variaveis/secrets do vault do GitHub Actions
