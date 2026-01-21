@@ -1,0 +1,144 @@
+name: challenge02-app
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "technical-challenges/entregas/challenge-02/**"
+      - "technical-challenges/devops/challenge-02/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente (staging ou prod)"
+        required: true
+        default: "staging"
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ""
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+  API_DEPLOYMENT: ${{ vars.API_DEPLOYMENT }}
+  WEB_DEPLOYMENT: ${{ vars.WEB_DEPLOYMENT }}
+  API_IMAGE: ${{ vars.API_IMAGE }}
+  WEB_IMAGE: ${{ vars.WEB_IMAGE }}
+  API_CONTEXT: technical-challenges/devops/challenge-02/api
+  WEB_CONTEXT: technical-challenges/devops/challenge-02/web
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'staging') }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar variaveis obrigatorias
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          EKS_CLUSTER_NAME: ${{ env.EKS_CLUSTER_NAME }}
+          K8S_NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          API_DEPLOYMENT: ${{ env.API_DEPLOYMENT }}
+          WEB_DEPLOYMENT: ${{ env.WEB_DEPLOYMENT }}
+          ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
+          ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY }}
+          API_IMAGE: ${{ env.API_IMAGE }}
+          WEB_IMAGE: ${{ env.WEB_IMAGE }}
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
+          : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
+          : "${EKS_CLUSTER_NAME:?Defina EKS_CLUSTER_NAME em Actions Variables}"
+          : "${K8S_NAMESPACE:?Defina K8S_NAMESPACE em Actions Variables}"
+          : "${API_DEPLOYMENT:?Defina API_DEPLOYMENT em Actions Variables}"
+          : "${WEB_DEPLOYMENT:?Defina WEB_DEPLOYMENT em Actions Variables}"
+          # Para build, requer repos; se usar imagens prontas, definir API_IMAGE/WEB_IMAGE
+          if [ -z "${API_IMAGE}" ] && [ -z "${{ vars.ECR_API_REPOSITORY }}" ]; then
+            echo "Configure ECR_API_REPOSITORY em Actions Variables ou forneca API_IMAGE" >&2
+            exit 1
+          fi
+          if [ -z "${WEB_IMAGE}" ] && [ -z "${{ vars.ECR_WEB_REPOSITORY }}" ]; then
+            echo "Configure ECR_WEB_REPOSITORY em Actions Variables ou forneca WEB_IMAGE" >&2
+            exit 1
+          fi
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Descobrir registry
+        id: registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Build/push API (opcional)
+        env:
+          IMAGE_TAG: ${{ github.sha }}-${{ github.ref_name }}-api
+        run: |
+          set -euo pipefail
+          if [ -f "${API_CONTEXT}/Dockerfile" ]; then
+            IMAGE_URI="${ECR_REGISTRY}/${{ vars.ECR_API_REPOSITORY || 'challenge-02-api' }}:${IMAGE_TAG}"
+            docker build -t "${IMAGE_URI}" "${API_CONTEXT}"
+            docker push "${IMAGE_URI}"
+            echo "API_IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+          elif [ -n "${API_IMAGE}" ]; then
+            echo "API_IMAGE_URI=${API_IMAGE}" >> "$GITHUB_ENV"
+            echo "Usando imagem de API fornecida em variaveis." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Nenhuma imagem de API fornecida e nenhum Dockerfile encontrado em ${API_CONTEXT}" >&2
+            exit 1
+          fi
+
+      - name: Build/push Web (opcional)
+        env:
+          IMAGE_TAG: ${{ github.sha }}-${{ github.ref_name }}-web
+        run: |
+          set -euo pipefail
+          if [ -f "${WEB_CONTEXT}/Dockerfile" ]; then
+            IMAGE_URI="${ECR_REGISTRY}/${{ vars.ECR_WEB_REPOSITORY || 'challenge-02-web' }}:${IMAGE_TAG}"
+            docker build -t "${IMAGE_URI}" "${WEB_CONTEXT}"
+            docker push "${IMAGE_URI}"
+            echo "WEB_IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+          elif [ -n "${WEB_IMAGE}" ]; then
+            echo "WEB_IMAGE_URI=${WEB_IMAGE}" >> "$GITHUB_ENV"
+            echo "Usando imagem de Web fornecida em variaveis." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Nenhuma imagem Web fornecida e nenhum Dockerfile encontrado em ${WEB_CONTEXT}" >&2
+            exit 1
+          fi
+
+      - name: Instalar ferramentas de deploy
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
+      - name: Atualizar kubeconfig (EKS)
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Criar namespace se nao existir
+        run: kubectl get ns "${K8S_NAMESPACE}" || kubectl create ns "${K8S_NAMESPACE}"
+
+      - name: Renderizar manifests
+        env:
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          API_APP: ${{ env.API_DEPLOYMENT }}
+          WEB_APP: ${{ env.WEB_DEPLOYMENT }}
+          API_IMAGE_URI: ${{ env.API_IMAGE_URI }}
+          WEB_IMAGE_URI: ${{ env.WEB_IMAGE_URI }}
+        run: |
+          envsubst < technical-challenges/entregas/challenge-02/k8s/api-deployment.yaml > /tmp/api-deployment.yaml
+          envsubst < technical-challenges/entregas/challenge-02/k8s/api-service.yaml > /tmp/api-service.yaml
+          envsubst < technical-challenges/entregas/challenge-02/k8s/web-deployment.yaml > /tmp/web-deployment.yaml
+          envsubst < technical-challenges/entregas/challenge-02/k8s/web-service.yaml > /tmp/web-service.yaml
+
+      - name: Deploy para Kubernetes
+        run: |
+          kubectl apply -f /tmp/api-deployment.yaml -f /tmp/api-service.yaml
+          kubectl apply -f /tmp/web-deployment.yaml -f /tmp/web-service.yaml

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${FRONT_APP}
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${FRONT_APP}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ${FRONT_APP}
+  template:
+    metadata:
+      labels:
+        app: ${FRONT_APP}
+    spec:
+      containers:
+        - name: front
+          image: ${FRONT_IMAGE_URI}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20

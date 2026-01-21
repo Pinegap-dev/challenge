@@ -1,0 +1,94 @@
+name: challenge02-iac
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "technical-challenges/entregas/challenge-02/**"
+      - "technical-challenges/entregas/challenge-04/modules/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente (hml ou prod)"
+        required: true
+        default: "hml"
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_WORKING_DIR: technical-challenges/entregas/challenge-02/iac
+
+jobs:
+  terraform-plan-apply:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar variaveis obrigatorias
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
+          : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
+          : "${DB_PASSWORD:?Defina TF_VAR_DB_PASSWORD em Actions Secrets}"
+          : "${BATCH_JOB_IMAGE:?Defina BATCH_JOB_IMAGE em Actions Variables}"
+
+      - name: Selecionar ambiente
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env_name=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "env_name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "env_name=hml" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform fmt
+        run: terraform fmt -check
+
+      - name: terraform validate
+        run: terraform validate
+
+      - name: terraform plan
+        env:
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+        run: |
+          EXTRA_VARS=()
+          EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
+          EXTRA_VARS+=("-var" "batch_job_image=${BATCH_JOB_IMAGE}")
+          terraform plan -input=false -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+
+      - name: terraform apply
+        if: github.event_name != 'pull_request'
+        env:
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          BATCH_JOB_IMAGE: ${{ vars.BATCH_JOB_IMAGE }}
+        run: |
+          EXTRA_VARS=()
+          EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
+          EXTRA_VARS+=("-var" "batch_job_image=${BATCH_JOB_IMAGE}")
+          terraform apply -input=false -auto-approve -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"

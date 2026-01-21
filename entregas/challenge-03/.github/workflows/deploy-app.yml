@@ -1,0 +1,95 @@
+name: challenge03-app
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "technical-challenges/devops/challenge-03/**"
+      - "technical-challenges/entregas/challenge-03/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente (staging ou prod)"
+        required: true
+        default: "staging"
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+  DEPLOYMENT_NAME: ${{ vars.DEPLOYMENT_NAME }}
+  APP_CONTEXT: technical-challenges/entregas/challenge-03/app
+  DOCKERFILE_PATH: technical-challenges/entregas/challenge-03/app/Dockerfile
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'staging') }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar variaveis obrigatorias
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          EKS_CLUSTER_NAME: ${{ env.EKS_CLUSTER_NAME }}
+          K8S_NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          DEPLOYMENT_NAME: ${{ env.DEPLOYMENT_NAME }}
+          NAME_VALUE: ${{ vars.NAME_VALUE }}
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
+          : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
+          : "${ECR_REPOSITORY:?Defina ECR_REPOSITORY em Actions Variables}"
+          : "${EKS_CLUSTER_NAME:?Defina EKS_CLUSTER_NAME em Actions Variables}"
+          : "${K8S_NAMESPACE:?Defina K8S_NAMESPACE em Actions Variables}"
+          : "${DEPLOYMENT_NAME:?Defina DEPLOYMENT_NAME em Actions Variables}"
+          : "${NAME_VALUE:?Defina NAME_VALUE em Actions Variables}"
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build e push da imagem
+        env:
+          IMAGE_TAG: ${{ github.sha }}-${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker build -f "${DOCKERFILE_PATH}" -t "${IMAGE_URI}" "${APP_CONTEXT}"
+          docker push "${IMAGE_URI}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Instalar ferramentas de deploy
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
+      - name: Atualizar kubeconfig (EKS)
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Criar namespace se nao existir
+        run: kubectl get ns "${K8S_NAMESPACE}" || kubectl create ns "${K8S_NAMESPACE}"
+
+      - name: Renderizar manifests
+        env:
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+          APP_NAME: ${{ env.DEPLOYMENT_NAME }}
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          NAME_VALUE: ${{ vars.NAME_VALUE }}
+        run: |
+          envsubst < technical-challenges/entregas/challenge-03/k8s/deployment.yaml > /tmp/deployment.yaml
+          envsubst < technical-challenges/entregas/challenge-03/k8s/service.yaml > /tmp/service.yaml
+
+      - name: Deploy para Kubernetes
+        run: kubectl apply -f /tmp/deployment.yaml -f /tmp/service.yaml

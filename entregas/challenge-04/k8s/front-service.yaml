@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${FRONT_APP}
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${FRONT_APP}
+spec:
+  type: ClusterIP
+  selector:
+    app: ${FRONT_APP}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP

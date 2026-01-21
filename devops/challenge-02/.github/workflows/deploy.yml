@@ -1,0 +1,89 @@
+name: deploy-iac
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "technical-challenges/entregas/challenge-02/**"
+      - "technical-challenges/entregas/challenge-04/modules/**"
+      - "technical-challenges/devops/challenge-02/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy (hml or prod)"
+        required: true
+        default: "hml"
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_WORKING_DIR: technical-challenges/entregas/challenge-02/iac
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required variables
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Set AWS_REGION in Actions Variables}"
+          : "${AWS_ROLE_TO_ASSUME:?Set AWS_ROLE_TO_ASSUME in Actions Secrets}"
+          : "${DB_PASSWORD:?Set TF_VAR_DB_PASSWORD in Actions Secrets}"
+
+      - name: Select environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env_name=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "env_name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "env_name=hml" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform fmt
+        run: terraform fmt -check
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        env:
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+        run: |
+          EXTRA_VARS=()
+          EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
+          terraform plan -input=false -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"
+
+      - name: Terraform apply
+        if: github.event_name != 'pull_request'
+        env:
+          DB_PASSWORD: ${{ secrets.TF_VAR_DB_PASSWORD }}
+        run: |
+          EXTRA_VARS=()
+          EXTRA_VARS+=("-var" "db_password=${DB_PASSWORD}")
+          terraform apply -input=false -auto-approve -var "environment=${{ steps.env.outputs.env_name }}" "${EXTRA_VARS[@]}"

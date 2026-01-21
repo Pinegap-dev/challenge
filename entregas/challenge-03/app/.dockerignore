@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.git
+.gitignore
+.venv
+venv
+.vscode
+.idea
+.pytest_cache
+.tox
+.nox
+dist
+build
+.mypy_cache
+.ruff_cache

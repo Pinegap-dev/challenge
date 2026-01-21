@@ -1,0 +1,108 @@
+name: ci-cd
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: technical-challenges/entregas/challenge-03/app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies (poetry)
+        run: |
+          pip install --no-cache-dir poetry
+          poetry install
+      - name: Lint (ruff)
+        run: poetry run ruff .
+      - name: Format check (black)
+        run: poetry run black --check .
+      - name: Tests
+        run: poetry run pytest
+
+  build-and-deploy:
+    needs: lint-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: technical-challenges/entregas/challenge-03/app
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        env_name: [staging, prod]
+    environment: ${{ matrix.env_name }}
+    if: (github.ref == 'refs/heads/develop' && matrix.env_name == 'staging') || (github.ref == 'refs/heads/main' && matrix.env_name == 'prod') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate required variables
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          STG_NAME: ${{ vars.STG_NAME }}
+          PROD_NAME: ${{ vars.PROD_NAME }}
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Set AWS_REGION in Actions Variables}"
+          : "${AWS_ROLE_TO_ASSUME:?Set AWS_ROLE_TO_ASSUME in Actions Secrets}"
+          : "${ECR_REPOSITORY:?Set ECR_REPOSITORY in Actions Variables}"
+          : "${LAMBDA_FUNCTION_NAME:?Set LAMBDA_FUNCTION_NAME in Actions Variables}"
+          : "${STG_NAME:?Set STG_NAME in Actions Variables}"
+          : "${PROD_NAME:?Set PROD_NAME in Actions Variables}"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies (poetry)
+        run: |
+          pip install --no-cache-dir poetry
+          poetry export --without-hashes -f requirements.txt -o requirements.txt
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}-${{ matrix.env_name }}
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker build -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+          echo "image_uri=${IMAGE_URI}" >> $GITHUB_ENV
+      - name: Deploy to Lambda (container image)
+        env:
+          NAME_VALUE: ${{ matrix.env_name == 'prod' && vars.PROD_NAME || vars.STG_NAME }}
+        run: |
+          UPDATE_OUTPUT=$(aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${image_uri}")
+          VERSION=$(echo "$UPDATE_OUTPUT" | jq -r '.Version')
+          aws lambda update-alias \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --name "${{ matrix.env_name }}" \
+            --function-version "$VERSION"
+          aws lambda update-function-configuration \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --environment "Variables={NAME=${NAME_VALUE}}"

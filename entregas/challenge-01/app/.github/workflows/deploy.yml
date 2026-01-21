@@ -1,0 +1,85 @@
+name: deploy-ecs
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "technical-challenges/devops/challenge-01/**"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'challenge-01' }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'challenge-01-cluster' }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE || 'challenge-01-service' }}
+  CONTAINER_NAME: ${{ vars.CONTAINER_NAME || 'fastapi-app' }}
+  APP_CONTEXT: technical-challenges/devops/challenge-01
+  DOCKERFILE_PATH: technical-challenges/devops/challenge-01/Dockerfile
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.APP_CONTEXT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r api/requirements.txt
+      - name: Sanity check (compile)
+        run: python -m compileall api
+
+  build-and-deploy:
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        env_name: [staging, prod]
+    environment: ${{ matrix.env_name }}
+    if: (github.ref == 'refs/heads/develop' && matrix.env_name == 'staging') || (github.ref == 'refs/heads/main' && matrix.env_name == 'prod') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}-${{ matrix.env_name }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker build -f "${DOCKERFILE_PATH}" -t "${IMAGE_URI}" "${APP_CONTEXT}"
+          docker push "${IMAGE_URI}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+      - name: Update ECS service
+        env:
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+        run: |
+          set -euo pipefail
+          SERVICE_DESC=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE")
+          TASK_DEF_ARN=$(echo "$SERVICE_DESC" | jq -r '.services[0].taskDefinition')
+          if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "null" ]; then
+            echo "ECS service or task definition not found" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition --task-definition "$TASK_DEF_ARN" --query "taskDefinition" > taskdef.json
+          jq --arg IMAGE "$IMAGE_URI" --arg NAME "$CONTAINER_NAME" '
+            .containerDefinitions |= map(if .name == $NAME then .image = $IMAGE else . end) |
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' taskdef.json > new-taskdef.json
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://new-taskdef.json --query "taskDefinition.taskDefinitionArn" --output text)
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --task-definition "$NEW_TASK_DEF_ARN" --force-new-deployment
