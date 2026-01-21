@@ -16,12 +16,11 @@ on:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
-  DEPLOYMENT_NAME: ${{ vars.DEPLOYMENT_NAME }}
+  ECS_CLUSTER_NAME: ${{ vars.ECS_CLUSTER_NAME }}
+  ECS_SERVICE_NAME: ${{ vars.ECS_SERVICE_NAME }}
+  CONTAINER_NAME: ${{ vars.CONTAINER_NAME || 'fastapi' }}
   APP_CONTEXT: technical-challenges/entregas/challenge-01/app
   DOCKERFILE_PATH: technical-challenges/entregas/challenge-01/app/Dockerfile
-  ADMIN_SECRET_NAME: ${{ vars.ADMIN_SECRET_NAME }}
 
 jobs:
   build-and-deploy:
@@ -38,23 +37,15 @@ jobs:
           AWS_REGION: ${{ env.AWS_REGION }}
           AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          EKS_CLUSTER_NAME: ${{ env.EKS_CLUSTER_NAME }}
-          K8S_NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          DEPLOYMENT_NAME: ${{ env.DEPLOYMENT_NAME }}
-          ADMIN_SECRET_NAME: ${{ env.ADMIN_SECRET_NAME }}
-          ADMIN_USER: ${{ secrets.ADMIN_USER }}
-          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
+          ECS_CLUSTER_NAME: ${{ env.ECS_CLUSTER_NAME }}
+          ECS_SERVICE_NAME: ${{ env.ECS_SERVICE_NAME }}
         run: |
           set -euo pipefail
           : "${AWS_REGION:?Defina AWS_REGION em Actions Variables}"
           : "${AWS_ROLE_TO_ASSUME:?Defina AWS_ROLE_TO_ASSUME em Actions Secrets}"
           : "${ECR_REPOSITORY:?Defina ECR_REPOSITORY em Actions Variables}"
-          : "${EKS_CLUSTER_NAME:?Defina EKS_CLUSTER_NAME em Actions Variables}"
-          : "${K8S_NAMESPACE:?Defina K8S_NAMESPACE em Actions Variables}"
-          : "${DEPLOYMENT_NAME:?Defina DEPLOYMENT_NAME em Actions Variables}"
-          : "${ADMIN_SECRET_NAME:?Defina ADMIN_SECRET_NAME em Actions Variables}"
-          : "${ADMIN_USER:?Defina ADMIN_USER em Actions Secrets}"
-          : "${ADMIN_PASS:?Defina ADMIN_PASS em Actions Secrets}"
+          : "${ECS_CLUSTER_NAME:?Defina ECS_CLUSTER_NAME em Actions Variables}"
+          : "${ECS_SERVICE_NAME:?Defina ECS_SERVICE_NAME em Actions Variables}"
 
       - name: Configurar credenciais AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -78,35 +69,31 @@ jobs:
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
       - name: Instalar ferramentas de deploy
-        run: sudo apt-get update && sudo apt-get install -y gettext-base
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Atualizar kubeconfig (EKS)
-        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
-
-      - name: Criar namespace se nao existir
-        run: kubectl get ns "${K8S_NAMESPACE}" || kubectl create ns "${K8S_NAMESPACE}"
-
-      - name: Aplicar secret de credenciais ADMIN
-        env:
-          ADMIN_USER: ${{ secrets.ADMIN_USER }}
-          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
-        run: |
-          kubectl -n "${K8S_NAMESPACE}" create secret generic "${ADMIN_SECRET_NAME}" \
-            --from-literal=ADMIN_USER="${ADMIN_USER}" \
-            --from-literal=ADMIN_PASS="${ADMIN_PASS}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Renderizar manifests (Deployment/Service)
+      - name: Preparar nova task definition (atualizar imagem)
         env:
           IMAGE_URI: ${{ env.IMAGE_URI }}
-          APP_NAME: ${{ env.DEPLOYMENT_NAME }}
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          ADMIN_SECRET: ${{ env.ADMIN_SECRET_NAME }}
+          CLUSTER: ${{ env.ECS_CLUSTER_NAME }}
+          SERVICE: ${{ env.ECS_SERVICE_NAME }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         run: |
-          envsubst < technical-challenges/entregas/challenge-01/k8s/deployment.yaml > /tmp/deployment.yaml
-          envsubst < technical-challenges/entregas/challenge-01/k8s/service.yaml > /tmp/service.yaml
-          cat /tmp/deployment.yaml
-          cat /tmp/service.yaml
+          set -euo pipefail
+          SERVICE_DESC=$(aws ecs describe-services --cluster "${CLUSTER}" --services "${SERVICE}")
+          TASK_DEF_ARN=$(echo "${SERVICE_DESC}" | jq -r '.services[0].taskDefinition')
+          aws ecs describe-task-definition --task-definition "${TASK_DEF_ARN}" > /tmp/td.json
+          jq --arg IMAGE "${IMAGE_URI}" --arg NAME "${CONTAINER_NAME}" '
+            .taskDefinition
+            | del(.status, .taskDefinitionArn, .requiresAttributes, .revision, .compatibilities, .registeredBy, .registeredAt)
+            | .containerDefinitions |= map(if .name == $NAME then .image = $IMAGE else . end)
+          ' /tmp/td.json > /tmp/new-td.json
+          NEW_TD_ARN=$(aws ecs register-task-definition --cli-input-json file:///tmp/new-td.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "NEW_TD_ARN=${NEW_TD_ARN}" >> "$GITHUB_ENV"
 
-      - name: Deploy para Kubernetes
-        run: kubectl apply -f /tmp/deployment.yaml -f /tmp/service.yaml
+      - name: Atualizar service ECS
+        env:
+          CLUSTER: ${{ env.ECS_CLUSTER_NAME }}
+          SERVICE: ${{ env.ECS_SERVICE_NAME }}
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "${CLUSTER}" --service "${SERVICE}" --task-definition "${NEW_TD_ARN}" --force-new-deployment

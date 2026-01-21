@@ -1,22 +1,17 @@
 # Pipelines de deploy (Challenge 01)
 
-Arquivos de pipeline: `.github/workflows/deploy-iac.yml` (infra) e `.github/workflows/deploy-app.yml` (aplicação). Ambos rodam em GitHub Actions e usam AWS + Kubernetes.
+Arquivos: `.github/workflows/deploy-iac.yml` (infra) e `.github/workflows/deploy-app.yml` (aplicação). Ambos rodam no GitHub Actions com AWS.
 
 ## deploy-iac.yml (IaC Terraform)
 - **Caminho IaC:** `technical-challenges/entregas/challenge-01/iac`.
-- **O que faz:** init/fmt/validate/plan/apply do Terraform para criar rede, ALB, ECS/EKS-ready sub-redes e service FastAPI base (infra descrita no módulo). Seleciona ambiente `hml` (develop) ou `prod` (main) ou entrada manual. Usa var-file `apply.fvars` gerado pelo workflow.
-- **Segredos/vars:** `AWS_ROLE_TO_ASSUME` (obrigatório), `ADMIN_USER`/`ADMIN_PASS` (obrigatórios), `TASK_IMAGE` (override de imagem), opcional `PROJECT` (prefixo IaC).
+- **O que faz:** `terraform init/fmt/validate/plan/apply` para criar VPC em 2 AZ, ALB público e serviço ECS Fargate da FastAPI. Escolhe ambiente `hml` (develop) ou `prod` (main) ou manual. Gera `apply.fvars` no workflow.
+- **Segredos/vars:** `AWS_ROLE_TO_ASSUME` (obrigatório), `ADMIN_USER`/`ADMIN_PASS` (obrigatórios), `TASK_IMAGE` (imagem inicial do serviço), opcional `PROJECT`.
 - **Gatilhos:** push em `main`/`develop` que toquem `entregas/challenge-01/**` ou disparo manual.
-- **Saída esperada:** infra aplicada com ALB/serviço e outputs do Terraform no log.
+- **Saída:** infra aplicada e outputs no log (DNS do ALB, nome do service).
 
-## deploy-app.yml (Aplicação em Kubernetes)
-- **Caminho app:** `technical-challenges/entregas/challenge-01/app` (Dockerfile construindo a FastAPI). Cópia de referência permanece em `devops/challenge-01`.
-- **O que faz:** builda imagem, push no ECR e faz rollout no Kubernetes (EKS) aplicando os manifests em `entregas/challenge-01/k8s/` com `kubectl`.
-- **Fluxo:** login AWS/ECR → build/push → kubeconfig do EKS → cria namespace → cria/atualiza Secret com `ADMIN_USER`/`ADMIN_PASS` → renderiza Deployment/Service via `envsubst` → `kubectl apply`.
-- **Segredos/vars:** `AWS_ROLE_TO_ASSUME` (obrigatório), `ADMIN_USER`/`ADMIN_PASS` (secret), `AWS_REGION`, `ECR_REPOSITORY`, `EKS_CLUSTER_NAME`, `K8S_NAMESPACE`, `DEPLOYMENT_NAME`, `ADMIN_SECRET_NAME`.
+## deploy-app.yml (Aplicação em ECS Fargate)
+- **Caminho app:** `technical-challenges/entregas/challenge-01/app` (Dockerfile da FastAPI). Cópia de referência permanece em `devops/challenge-01`.
+- **O que faz:** builda imagem, faz push no ECR e atualiza o service ECS registrando nova task definition com a imagem gerada.
+- **Fluxo:** login AWS/ECR → build/push → ler task definition atual do service → trocar a imagem do container (`CONTAINER_NAME`, padrão `fastapi`) → registrar nova task definition → `update-service --force-new-deployment`.
+- **Segredos/vars:** `AWS_ROLE_TO_ASSUME` (obrigatório), `AWS_REGION`, `ECR_REPOSITORY`, `ECS_CLUSTER_NAME`, `ECS_SERVICE_NAME`, opcional `CONTAINER_NAME`.
 - **Gatilhos:** push em `main`/`develop` que atinjam `devops/challenge-01` ou `entregas/challenge-01`, ou manual. Ambiente `staging` (develop) e `prod` (main) por padrão.
-
-## Observações de Kubernetes
-- Os manifests base estao em `entregas/challenge-01/k8s/` e sao renderizados com a imagem gerada no pipeline.
-- Certifique-se de que o cluster EKS e o namespace configurados existem ou que a IaC os tenha criado; o pipeline cria o namespace se faltar.
-- Credenciais ADMIN ficam em Secret Kubernetes (`ADMIN_SECRET_NAME`). Ajuste probes/replicas conforme carga.
