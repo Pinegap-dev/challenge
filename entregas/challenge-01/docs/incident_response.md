@@ -1,35 +1,35 @@
-# Plano de Resposta a Incidentes — Challenge 01 (FastAPI)
+# Plano de Resposta a Incidentes – Challenge 01 (FastAPI em ECS Fargate)
 
-Contexto: API FastAPI containerizada, deploy em EKS (Deployment/Service), imagem no ECR, secrets ADMIN em Kubernetes. Infra provisória via Terraform (VPC/ALB/ECS/EKS).
+Contexto: API FastAPI containerizada, deploy em ECS Fargate atrás de ALB. Imagem no ECR; credenciais `ADMIN_USER`/`ADMIN_PASS` definidas via Terraform (recomendado usar Secrets Manager com rotation). Infra: VPC 2 AZ, ALB público, service ECS.
 
 1) Detecção e gatilhos
-- Alarms CloudWatch/Prometheus: p95 alta, 5xx/4xx incomuns, pods não prontos, readiness/liveness falhando, picos de 401/403.
-- Alertas de segurança: IAM role misuse, alterações em SGs/Network ACLs, tráfego anômalo no ALB/WAF.
+- CloudWatch Alarms: 5xx/latência alta no ALB, `ECS Service Desired vs Running` divergente, falhas de tarefa (StoppedReason).
+- Segurança: alterações suspeitas em SG/NACL, IAM role misuse, tráfego anômalo no ALB/WAF (se habilitado).
 
 2) Triage inicial
-- Confirmar escopo (ambiente: staging/prod), tempo de início, blast radius (ALB target health, pods afetados, nós EKS).
-- Congelar mudanças não essenciais (pausar deploys).
+- Identificar ambiente (staging/prod), início e alcance (ALB target health, tasks afetadas, sub-redes).
+- Congelar deploys não críticos (pausar pipeline de app).
 
 3) Contenção imediata
-- Se comprometimento: revogar/rotacionar secrets (`ADMIN_USER/PASS`), isolar namespace ou bloquear SG/Ingress suspeitos.
-- Se crash/erro app: scale to zero e reverter para última imagem estável (deployment rollback).
+- Comprometimento: rotacionar secrets (`ADMIN_USER/PASS`), apertar SG para bloquear origens suspeitas.
+- Erro/crash: reduzir tráfego (deregister targets) ou scale down temporário; reverter para última task definition estável (`aws ecs update-service ... --task-definition <revision-boa>`).
 
 4) Análise e erradicação
-- Logs: `kubectl logs`, CloudWatch (stdout), eventos do Deployment/ReplicaSet.
-- Infra: verificar ALB target health, SGs, rotas; checar IAM role do pod.
-- Aplicar fix em branch hotfix, gerar nova imagem, validar em staging antes de prod.
+- Logs CloudWatch do service (`/ecs/<service>`) e eventos do ALB (target health). Checar health check no ALB.
+- Conferir SG, rotas, dependências externas (ECR pull, DNS, NAT).
+- Criar hotfix, gerar nova imagem, validar em staging antes de prod.
 
 5) Recuperação
-- Reimplantar imagem corrigida; reabilitar tráfego gradualmente (HPA/rollout progressivo).
-- Validar saúde (readiness ok, 2xx/latência normal). Manter monitoração ampliada por 24–48h.
+- Atualizar service ECS com a task definition corrigida; restaurar desired count.
+- Validar saúde (targets healthy, 2xx e latência normal). Monitorar reforçado por 24–48h.
 
 6) Comunicação
-- Status interno: canal incidentes; externo se necessário (status page).
-- Registrar linha do tempo e owners; abrir postmortem.
+- Canal interno de incidentes; externo (status page) se aplicável.
+- Registrar linha do tempo e responsáveis; abrir postmortem.
 
 7) Pós-incidente
-- RCA documentado (causa raiz e contributivas).
-- Ações preventivas: testes de integração conectando ao backend, alarms adicionais, política de secrets (rotation), WAF/Rate limiting se não houver.
+- RCA documentado (causas raiz e contributivas).
+- Ações preventivas: mover secrets para Secrets Manager com rotation, alarms adicionais (CPU/mem por tarefa, 5xx do ALB), WAF/Rate limiting se ausentes, testes de integração cobrindo autenticação/admin.
 
 8) Artefatos úteis
-- Imagens versionadas por SHA no ECR; manifests em `k8s/`; pipeline `deploy-app.yml`; Terraform state/outputs do ambiente.
+- Imagens versionadas (SHA) no ECR; pipelines `.github/workflows/deploy-iac.yml` e `deploy-app.yml`; Terraform state/outputs do ambiente; histórico de health do ALB.
