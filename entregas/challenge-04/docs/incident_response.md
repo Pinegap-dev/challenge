@@ -1,35 +1,35 @@
-# Plano de Resposta a Incidentes — Challenge 04 (Next.js + FastAPI + Batch/Step Functions)
+# Incident Response Plan – Challenge 04 (Next.js + FastAPI + Batch/Step Functions)
 
-Contexto: Front Next.js e API FastAPI em EKS; Aurora Postgres; S3 uploads/resultados; Batch/Step Functions; ALB/Ingress; imagens no ECR; IaC modular Terraform.
+Context: Next.js front and FastAPI API on EKS; Aurora Postgres; S3 uploads/results; Batch/Step Functions; ALB/Ingress; images in ECR; modular Terraform IaC.
 
-1) Detecção e gatilhos
-- Alarms: 5xx/latência ALB, pods não prontos, HPA saturado, fila/idade Batch, falhas Step Functions, conexões RDS, erros S3.
-- Segurança: IAM/IRSA uso indevido, WAF (se ativo) com bloqueios, SG/ACL alterados, objetos S3 públicos.
+1) Detection and triggers
+- Alarms: ALB 5xx/latency, pods not ready, HPA saturation, Batch queue/age, Step Functions failures, RDS connections, S3 errors.
+- Security: IAM/IRSA misuse, WAF (if enabled) blocks, SG/ACL changes, public S3 objects.
 
 2) Triage
-- Confirmar ambiente (hml/prod), serviços impactados (front, API, pipeline Batch), horário e alcance (AZs, namespaces).
-- Pausar deploys enquanto investiga.
+- Confirm environment (hml/prod), impacted services (front, API, Batch pipeline), time and scope (AZs, namespaces).
+- Pause deploys while investigating.
 
-3) Contenção
-- Incidente de segurança: isolar namespace ou SG, revogar/rotacionar secrets, suspender execuções Step Functions/Batch.
-- Regressão app: rollback Deployment para imagem estável; limitar tráfego via Ingress/ALB se preciso.
-- DB indisponível: failover Aurora (Multi-AZ), ajustar SG/rotas.
+3) Containment
+- Security incident: isolate namespace or SG, revoke/rotate secrets, pause Step Functions/Batch runs.
+- App regression: rollback Deployment to stable image; limit traffic via Ingress/ALB if needed.
+- DB outage: Aurora failover (Multi-AZ), fix SG/routes.
 
-4) Análise e erradicação
-- Logs: pods (kubectl/CloudWatch), ALB access logs, Step Functions execution history, Batch job logs, eventos RDS.
-- Infra: checar SG, rotas/NAT, quotas; validar IAM/IRSA para S3/States/Batch/KMS.
-- Aplicar correção em branch hotfix, build nova imagem, validar em hml antes de prod.
+4) Analysis and eradication
+- Logs: pods (kubectl/CloudWatch), ALB access logs, Step Functions execution history, Batch job logs, RDS events.
+- Infra: check SG, routes/NAT, quotas; validate IAM/IRSA for S3/States/Batch/KMS.
+- Apply fix in hotfix branch, build new image, validate in staging before prod.
 
-5) Recuperação
-- Reimplantar imagens corrigidas, reativar pipelines Batch/Step Functions.
-- Validar saúde: targets healthy, p95 normal, fila Batch baixando, Step Functions sem erros, RDS ok.
-- Monitoramento reforçado por 24–48h.
+5) Recovery
+- Redeploy fixed images, re-enable Batch/Step Functions pipelines.
+- Validate health: targets healthy, normal p95, Batch queue draining, Step Functions error-free, RDS OK.
+- Heightened monitoring for 24–48h.
 
-6) Comunicação
-- Atualizar canais internos e, se impactar clientes, status externo. Registrar linha do tempo e responsáveis.
+6) Communication
+- Update internal channels and, if customer impact, external status. Record timeline and owners.
 
-7) Pós-incidente
-- RCA com ações preventivas: testes de integração (DB/S3/States/Batch), alarms extras (fila/idade, 5xx, latência), WAF/rate limiting, drills de restore, política de least privilege revisada.
+7) Post-incident
+- RCA with preventive actions: integration tests (DB/S3/States/Batch), extra alarms (queue/age, 5xx, latency), WAF/rate limiting, restore drills, least-privilege policy review.
 
-8) Artefatos úteis
-- IaC em `entregas/challenge-04/iac/`; manifests K8s em `entregas/challenge-04/k8s/`; pipelines `deploy-iac.yml` e `deploy-app.yml`; imagens no ECR; state machine e queue Batch/Step Functions; modulo `edge` opcional para CloudFront/Route53/ACM/WAF.
+8) Useful artifacts
+- IaC in `entregas/challenge-04/iac/`; K8s manifests in `entregas/challenge-04/k8s/`; pipelines `deploy-iac.yml` and `deploy-app.yml`; images in ECR; Step Functions state machine and Batch queue; optional `edge` module for CloudFront/Route53/ACM/WAF.

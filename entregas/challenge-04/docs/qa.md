@@ -1,34 +1,34 @@
-# Q&A - Challenge 04 (IaC modular: Next.js + FastAPI + Batch/Step Functions)
+# Q&A - Challenge 04 (Modular IaC: Next.js + FastAPI + Batch/Step Functions)
 
-## Por que modularizar o Terraform?
-- Facilita reuso e manutencao (network, kms/s3, ecr, rds, eks, batch_sfn). Permite aplicar/atualizar partes e versionar modulos. Segregacao de responsabilidades e menor blast radius.
+## Why modularize Terraform?
+- Easier reuse and maintenance (network, kms/s3, ecr, rds, eks, batch_sfn). Lets you apply/update parts, version modules, and reduce blast radius with clearer ownership.
 
-## Como a arquitetura escala e garante HA?
-- VPC multi-AZ; EKS com node group autoscaling; HPA nos pods; Aurora Postgres multi-AZ; Batch com CE spot/on-demand; ALB/Ingress multi-AZ; buckets S3 com KMS. Pode incluir CloudFront + WAF para borda (modulo `edge`).
+## How does the architecture scale and ensure HA?
+- Multi-AZ VPC; EKS with autoscaling node group; HPA on pods; Aurora Postgres multi-AZ; Batch CE spot/on-demand; multi-AZ ALB/Ingress; S3 buckets with KMS. CloudFront + WAF for edge via `edge` module if needed.
 
-## Por que EKS para API/Front?
-- Padrao Kubernetes: facilita IRSA, ingress controller, HPA, observabilidade (Prometheus/Grafana), e blue/green/Canary via ingress/Argo Rollouts. Se front for static, pode ir para S3+CloudFront (usando `edge`); se SSR, pode rodar em EKS/ECS.
+## Why EKS for API/Front?
+- Kubernetes standard: IRSA, ingress controller, HPA, observability (Prometheus/Grafana), and blue/green/canary via ingress/Argo Rollouts. If the front is static, it can go to S3+CloudFront (`edge`); if SSR, it can run on EKS/ECS.
 
-## Como acionar Batch/Step Functions?
-- API FastAPI usa role IRSA com permissoes `states:StartExecution` e `batch:SubmitJob`. State machine chama Batch queue/Job Definition com imagem `batch_job_image`. Jobs leem S3 uploads e gravam S3 resultados (lifecycle 365d/5y).
+## How to trigger Batch/Step Functions?
+- FastAPI uses an IRSA role with `states:StartExecution` and `batch:SubmitJob`. The state machine calls Batch queue/Job Definition with image `batch_job_image`. Jobs read S3 uploads and write S3 results (lifecycle 365d/5y).
 
-## Como o front descobre a API?
-- Variavel `API_BASE_URL` injeta `NEXT_PUBLIC_API_BASE` no deployment do front. No ingress, hosts `API_HOST`/`FRONT_HOST` e opcional `ALB_CERT_ARN` cuidam de HTTPS via ALB.
+## How does the front discover the API?
+- `API_BASE_URL` injects `NEXT_PUBLIC_API_BASE` in the front deployment. In ingress, hosts `API_HOST`/`FRONT_HOST` and optional `ALB_CERT_ARN` handle HTTPS via ALB.
 
-## Seguranca e dados sensiveis?
-- Secrets em Secrets Manager/SSM; IRSA para pods; SGs restritos (ALB -> pods; pods -> RDS); KMS para S3; TLS em transito; WAF/CloudFront opcional via `edge`; CloudTrail/Config habilitados; roles least privilege.
+## Security and sensitive data?
+- Secrets in Secrets Manager/SSM; IRSA for pods; tight SGs (ALB -> pods; pods -> RDS); KMS for S3; TLS in transit; optional WAF/CloudFront via `edge`; CloudTrail/Config enabled; least-privilege roles.
 
-## Observabilidade/SRE?
-- Logs stdout para CloudWatch; Container Insights/Prometheus para metricas; alarms para 5xx/latencia ALB, CPU/mem pods, conexoes RDS, idade/fila Batch, falhas Step Functions. Opcional tracing (X-Ray/OTel).
+## Observability/SRE?
+- Stdout logs to CloudWatch; Container Insights/Prometheus for metrics; alarms for ALB 5xx/latency, pod CPU/mem, RDS connections, Batch age/queue, Step Functions failures. Optional tracing (X-Ray/OTel).
 
 ## CI/CD?
-- Pipelines separadas: Terraform (plan/apply por ambiente) e app (build/push imagens API/Front, deploy kubectl/Helm/ArgoCD). OIDC para AWS. Scans de imagem (ECR) e tfsec/checkov recomendados. Aprovações para prod.
+- Separate pipelines: Terraform (plan/apply per environment) and app (build/push API/Front images, deploy via kubectl/Helm/ArgoCD). OIDC for AWS. Image scans (ECR) and tfsec/checkov recommended. Approvals for prod.
 
-## Rollback e releases?
-- Imagens taggeadas por SHA/semver; reverter Deployment/Helm release ou apontar Task/Job Definition anterior. Terraform com workspaces/state remoto e planos revisados antes de apply.
+## Rollback and releases?
+- Images tagged by SHA/semver; roll back Deployment/Helm release or point to previous Task/Job Definition. Terraform with workspaces/remote state and plans reviewed before apply.
 
-## Perguntas da sessao "Entrega" (SRE)
-- App nao acessa o banco, o que fazer? Verificar se SG/ACL permitem porta do RDS, endpoint/hostname corretos e secrets válidos (SSM/Secrets). Conferir health do Aurora e failover. Checar se o pod tem rota/NAT para acessar o endpoint privado.
-- Como debugar? Logs da app/pods, eventos do RDS, métricas de conexões, VPC Reachability Analyzer, `kubectl exec` + `psql` via bastion, e testes de conectividade na mesma subnet/SG. Replicar em staging.
-- Como evitar que volte a ocorrer? IaC versionado para SG/rotas, rotation/validate de credenciais, liveness/readiness que validam conexões, alarms para erros de conexao e latencia DB, testes de integração em CI apontando para um banco de QA.
-- Como definir SLO/SLI e acompanhar? SLO 99.9% disponibilidade API; SLIs: taxa 2xx/total, latencia p95, erro DB (timeouts/conexoes falhas), idade fila Batch, sucesso Step Functions. Monitorar via CloudWatch/Prometheus + dashboards e alertas, revisando SLO periodicamente.
+## “Entrega” (SRE) session answers
+- App can’t reach DB: check SG/ACL allow RDS port, correct endpoint/hostname, valid secrets (SSM/Secrets). Check Aurora health/failover. Ensure pod has route/NAT to reach the private endpoint.  
+- How to debug: app/pod logs, RDS events, connection metrics, VPC Reachability Analyzer, `kubectl exec` + `psql` via bastion, connectivity tests in same subnet/SG. Reproduce in staging.  
+- How to prevent recurrence: versioned IaC for SG/routes, rotate/validate creds, liveness/readiness that validate connections, alarms for DB connection errors/latency, CI integration tests pointing to a QA DB.  
+- How to set/track SLO/SLI: SLO 99.9% API availability; SLIs: 2xx/total, p95 latency, DB errors/timeouts, Batch queue age, Step Functions success. Monitor via CloudWatch/Prometheus with dashboards/alerts, review SLO periodically.

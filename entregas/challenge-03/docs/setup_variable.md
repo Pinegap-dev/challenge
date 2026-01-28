@@ -1,6 +1,6 @@
-# Como cadastrar variaveis e segredos (Challenge 03)
+# How to add variables and secrets (Challenge 03)
 
-1. Acesse `Settings > Secrets and variables > Actions` no repositório.
-2. Em **Variables**, crie os itens listados em `VARIABLES.md` (AWS_REGION, ECR_REPOSITORY, LAMBDA_FUNCTION_NAME, NAME_VALUE ou NAME_VALUE_STAGING/NAME_VALUE_PROD; opcional `PROJECT` para prefixo da IaC).
-3. Em **Secrets**, crie `AWS_ROLE_TO_ASSUME`.
-4. Execute os workflows (`deploy-iac.yml` e `deploy-app.yml`) apos preencher tudo; as pipelines validam a presenca das variaveis e falham se faltar algo. Os builds usam o path `entregas/challenge-03/app` (copia mantida em `devops/challenge-03`).
+1. Go to `Settings > Secrets and variables > Actions` in the repository.  
+2. Under **Variables**, add the items listed in `VARIABLES.md` (AWS_REGION, ECR_REPOSITORY, LAMBDA_FUNCTION_NAME, NAME_VALUE or NAME_VALUE_STAGING/NAME_VALUE_PROD; optional `PROJECT` for IaC prefix).  
+3. Under **Secrets**, add `AWS_ROLE_TO_ASSUME`.  
+4. Run the workflows (`deploy-iac.yml` and `deploy-app.yml`) after everything is filled; pipelines validate required variables and fail if anything is missing. Builds use path `entregas/challenge-03/app` (copy kept in `devops/challenge-03`).

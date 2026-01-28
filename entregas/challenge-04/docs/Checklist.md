@@ -1,69 +1,69 @@
-# IaC modular para Next.js + FastAPI + Batch/Step Functions (Challenge 04)
+# Modular IaC for Next.js + FastAPI + Batch/Step Functions (Challenge 04)
 
-Objetivo: entregar a base de IaC em Terraform (modular) para o cenário Next.js frontend + API FastAPI + pipeline Batch/Step Functions na AWS, com buckets S3, Aurora, ECR, EKS e rede completa.
+Goal: deliver the modular Terraform base for the Next.js frontend + FastAPI API + Batch/Step Functions pipeline on AWS, with S3 buckets, Aurora, ECR, EKS, and full networking.
 
-## Modulos/arquitetura (alto nivel) em `iac/modules/`
-- `network`: VPC multi-AZ, sub-redes pub/priv, NAT, IGW, rotas, SGs (ALB/EKS/RDS).
-- `kms` + `s3`: chave KMS e buckets uploads (365d) e resultados (5y) com SSE-KMS e block public.
-- `ecr`: repos ECR para frontend, api e batch (scan on push).
-- `rds`: Aurora Postgres multi-AZ criptografado.
-- `eks`: cluster EKS + node group base com roles/attachments.
-- `batch_sfn`: Batch (Fargate/EC2) + Step Functions para orquestracao de jobs.
+## Modules/architecture (high level) in `iac/modules/`
+- `network`: multi-AZ VPC, public/private subnets, NAT, IGW, routes, SGs (ALB/EKS/RDS).
+- `kms` + `s3`: KMS key and buckets for uploads (365d) and results (5y) with SSE-KMS and block public.
+- `ecr`: ECR repos for frontend, api, and batch (scan on push).
+- `rds`: encrypted Aurora Postgres multi-AZ.
+- `eks`: EKS cluster + base node group with roles/attachments.
+- `batch_sfn`: Batch (Fargate/EC2) + Step Functions for job orchestration.
 
-## Fase 0 - Preparacao
-1) Requisitos: AWS CLI, Terraform >= 1.6, Docker se for buildar imagens.
-2) Definir estrategia de borda (ALB/CloudFront/WAF/Route53) e modelo do Next.js (static vs SSR/ISR). Se usar borda, habilitar `enable_edge` e preencher dominio/hosted zone/origin.
-3) Clonar repo e criar branch pessoal.
+## Phase 0 - Preparation
+1) Requirements: AWS CLI, Terraform >= 1.6, Docker if building images.  
+2) Decide on edge strategy (ALB/CloudFront/WAF/Route53) and Next.js mode (static vs SSR/ISR). If using edge, set `enable_edge` and fill domain/hosted zone/origin.  
+3) Clone repo and create a personal branch.
 
-## Fase 1 - Configurar e aplicar Terraform
-1) Diretorio: `entregas/challenge-04/iac/` (modulos agora dentro de `iac/modules/`).
-2) Ajustar variaveis em `iac/main.tf`: `db_password`, `region`, `environment`, `batch_job_image`, classes de RDS/node group, tags. Se usar borda: `enable_edge`, `domain_name`, `hosted_zone_id`, `origin_domain_name`, opcional `acm_certificate_arn`, `enable_waf`.
-3) Executar por ambiente (ex. hml):
+## Phase 1 - Configure and apply Terraform
+1) Directory: `entregas/challenge-04/iac/` (modules now under `iac/modules/`).  
+2) Adjust variables in `iac/main.tf`: `db_password`, `region`, `environment`, `batch_job_image`, RDS/node group sizes, tags. If using edge: `enable_edge`, `domain_name`, `hosted_zone_id`, `origin_domain_name`, optional `acm_certificate_arn`, `enable_waf`.  
+3) Run per environment (e.g., hml):
    ```bash
    cd iac
    terraform init
    terraform plan -var 'environment=hml'
    terraform apply -var 'environment=hml' -auto-approve
    ```
-4) Outputs: VPC/subnets, buckets, chave KMS, ECR URIs, Aurora endpoint, EKS cluster, Batch queue/State Machine.
-5) Repetir para `prod` em state/workspace separado.
+4) Outputs: VPC/subnets, buckets, KMS key, ECR URIs, Aurora endpoint, EKS cluster, Batch queue/State Machine.  
+5) Repeat for `prod` with separate state/workspace.
 
-## Fase 2 - Imagens e deploy das apps
-1) Build/push imagens:
-   - Front Next.js -> ECR frontend (static ou SSR conforme estrategia).
-   - API FastAPI -> ECR api.
-   - Batch worker -> ECR batch (ou imagem apontada em `batch_job_image`).
+## Phase 2 - Images and app deploy
+1) Build/push images:
+   - Next.js front -> frontend ECR (static or SSR per strategy).  
+   - FastAPI API -> api ECR.  
+   - Batch worker -> batch ECR (or image set in `batch_job_image`).  
 2) EKS:
-   - Instalar ALB Ingress Controller, Cluster Autoscaler, habilitar IRSA.
-   - Deploy FastAPI via Helm/manifests, criar Ingress -> ALB (usar vars `API_HOST`, `FRONT_HOST`, `ALB_CERT_ARN`, `API_BASE_URL`).
+   - Install ALB Ingress Controller, Cluster Autoscaler, enable IRSA.  
+   - Deploy FastAPI via Helm/manifests, create Ingress -> ALB (use vars `API_HOST`, `FRONT_HOST`, `ALB_CERT_ARN`, `API_BASE_URL`).  
 3) Front:
-   - Se static: S3 + CloudFront (usar modulo `edge` para a distro; buckets estaticos precisam ser adicionados).
-   - Se SSR/ISR: CloudFront + ALB/App Runner/ECS (estender IaC e usar `edge` com origin para o ALB/Ingress).
+   - If static: S3 + CloudFront (use `edge` module for the distro; add static buckets).  
+   - If SSR/ISR: CloudFront + ALB/App Runner/ECS (extend IaC and use `edge` with origin to ALB/Ingress).
 
-## Fase 3 - Batch/Step Functions
-1) Validar Job Definition usa a imagem correta e recursos (vCPU/mem, retries, timeout).
-2) Garantir permissoes IAM (IRSA) para a API invocar `states:StartExecution` e acessar S3.
-3) Testar execucao fim-a-fim (upload -> execucao -> resultado no bucket de saida).
+## Phase 3 - Batch/Step Functions
+1) Validate Job Definition uses the correct image/resources (vCPU/mem, retries, timeout).  
+2) Ensure IAM permissions (IRSA) for the API to call `states:StartExecution` and access S3.  
+3) Test end-to-end (upload -> execution -> result in output bucket).
 
-## Fase 4 - DNS, TLS e WAF (ajuste/edge opcional)
+## Phase 4 - DNS, TLS, and WAF (edge optional)
 1) Route53 + ACM + WAF:
-   - Certificado ACM em us-east-1 via modulo `edge` ou ARN externo.
-   - Distro CloudFront (modulo `edge`) e/ou ALB HTTPS (listener 443; redirect 80 -> 443).
-   - WAF (opcional no modulo `edge`) com regras gerenciadas + rate limit.
+   - ACM cert in us-east-1 via `edge` module or external ARN.  
+   - CloudFront distro (`edge` module) and/or ALB HTTPS (listener 443; redirect 80 -> 443).  
+   - WAF (optional in `edge`) with managed rules + rate limit.
 
-## Fase 5 - Observabilidade
-1) Logs: awslogs para pods/Batch; grupos CloudWatch dedicados.
-2) Metricas: Prometheus/Grafana via EKS add-ons ou CloudWatch Container Insights.
-3) Alarms: 5xx/latencia ALB, CPU/mem EKS, conexoes RDS, idade/fila Batch, falhas Step Functions.
+## Phase 5 - Observability
+1) Logs: awslogs for pods/Batch; dedicated CloudWatch groups.  
+2) Metrics: Prometheus/Grafana via EKS add-ons or CloudWatch Container Insights.  
+3) Alarms: ALB 5xx/latency, EKS CPU/mem, RDS connections, Batch age/queue, Step Functions failures.
 
-## Fase 6 - CI/CD (a implementar)
-1) Pipelines GitHub Actions:
-   - `terraform plan/apply` por ambiente (hml/prod) com approvals.
-   - Build/push das imagens frontend/api/batch.
-   - Deploy dos manifests no EKS (kubectl/Helm/ArgoCD).
-2) Checkov/tfsec e scan de imagens ECR habilitados.
+## Phase 6 - CI/CD (to implement)
+1) GitHub Actions pipelines:
+   - `terraform plan/apply` per environment (hml/prod) with approvals.  
+   - Build/push frontend/api/batch images.  
+   - Deploy manifests to EKS (kubectl/Helm/ArgoCD).  
+2) Checkov/tfsec and ECR image scan enabled.
 
-## Fase 7 - Validacao
-1) Acessar endpoints frontend/API via CF/ALB; health checks ok.
-2) Executar pipeline Batch/Step Functions e conferir resultados no bucket.
-3) Revisar alarms/logs/metricas e testes de resiliencia (falha de job, HPA, autoscaling).
+## Phase 7 - Validation
+1) Access frontend/API endpoints via CF/ALB; health checks OK.  
+2) Run Batch/Step Functions pipeline and confirm results in the bucket.  
+3) Review alarms/logs/metrics and resilience tests (job failure, HPA, autoscaling).

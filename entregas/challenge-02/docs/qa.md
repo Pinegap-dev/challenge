@@ -1,37 +1,37 @@
 # Q&A - Challenge 02 (Django + FastAPI + Batch/Step Functions)
 
-## Como a arquitetura garante HA e escala?
-- VPC multi-AZ, EKS com node groups autoscaling (on-demand + spot), ALB/Ingress multi-AZ, Aurora Postgres multi-AZ. HPA nos deployments. Batch CE com mix spot/on-demand. CloudFront para cache e WAF na borda.
+## How does the architecture ensure HA and scale?
+- Multi-AZ VPC, EKS with autoscaling node groups (on-demand + spot), multi-AZ ALB/Ingress, multi-AZ Aurora Postgres. HPA on deployments. Batch CE mixing spot/on-demand. CloudFront for cache and WAF at the edge.
 
-## Por que EKS e nao ECS/App Runner?
-- Dois servicos (Django frontend e FastAPI) e possivel extensao com sidecars/observabilidade; EKS facilita padronizacao k8s, IRSA, ingress controller, HPA, service mesh opcional. ECS seria viavel, mas EKS atende escala/observabilidade requerida.
+## Why EKS and not ECS/App Runner?
+- Two services (Django frontend and FastAPI) and room for sidecars/observability; EKS standardizes k8s, IRSA, ingress controller, HPA, optional service mesh. ECS would work, but EKS meets scale/observability requirements.
 
-## Como trata uploads e resultados (retencao)?
-- S3 uploads com lifecycle de 365 dias; resultados com 5 anos. Ambos com SSE-KMS, versionamento e bloqueio publico. Opcional replicacao cross-region.
+## How do uploads/results retention work?
+- S3 uploads with 365-day lifecycle; results with 5-year lifecycle. Both SSE-KMS, versioning, and public-block. Optional cross-region replication.
 
-## Como proteger dados e acessos?
-- IAM least privilege + IRSA para pods. SGs restritos (ALB -> pods; pods -> RDS). WAF no CloudFront/ALB. KMS para S3, TLS in transit, secrets em Secrets Manager/SSM. CloudTrail/Config habilitados.
+## How do you protect data and access?
+- Least-privilege IAM + IRSA for pods. Tight SGs (ALB -> pods; pods -> RDS). WAF on CloudFront/ALB. KMS for S3, TLS in transit, secrets in Secrets Manager/SSM. CloudTrail/Config enabled.
 
-## Como orquestra Batch/Step Functions?
-- API invoca Step Functions (StartExecution) via role dedicada; state machine chama Batch submitJob. Job definition define imagem e recursos; CE mistura spot/on-demand para custo. Resiliência via retries/backoff.
+## How are Batch/Step Functions orchestrated?
+- API calls Step Functions (StartExecution) via dedicated role; state machine calls Batch submitJob. Job definition sets image/resources; CE mixes spot/on-demand for cost. Resilience via retries/backoff.
 
-## Como expor as apps?
-- Route53 -> CloudFront + WAF -> ALB/Ingress -> Services no EKS. Certificados ACM. Path-based routing entre frontend e API.
+## How are apps exposed?
+- Route53 -> CloudFront + WAF -> ALB/Ingress -> EKS services. ACM certificates. Path-based routing between frontend and API.
 
-## Observabilidade e SRE?
-- Logs stdout -> CloudWatch; metrics via CloudWatch + Prometheus/Grafana; alarms para 5xx/latencia ALB, CPU/mem pods, conexoes RDS, fila/idade Batch, erros Step Functions. AWS Backup para RDS.
+## Observability and SRE?
+- Stdout logs -> CloudWatch; metrics via CloudWatch + Prometheus/Grafana; alarms for ALB 5xx/latency, pod CPU/mem, RDS connections, Batch queue/age, Step Functions errors. AWS Backup for RDS.
 
 ## CI/CD?
-- GitHub Actions: lint/test -> build/push imagens -> deploy (kubectl/Helm/ArgoCD). Gates para prod. Scan de imagem (ECR), opcional tfsec/checkov.
+- GitHub Actions: lint/test -> build/push images -> deploy (kubectl/Helm/ArgoCD). Gates for prod. Image scan (ECR), optional tfsec/checkov.
 
-## SLO/SLI e incidentes?
-- SLO ex. 99.9% disponibilidade API; SLIs: 2xx/total, latencia p95, idade fila Batch, sucesso Step Functions. Runbooks para DB down (SG/credenciais/health), fila presa (Batch/CE), erro app (logs/traces).
+## SLO/SLI and incidents?
+- Example SLO 99.9% API availability; SLIs: 2xx/total, p95 latency, Batch queue age, Step Functions success. Runbooks for DB down (SG/creds/health), stuck queue (Batch/CE), app error (logs/traces).
 
-## Custo?
-- Spot em node groups e Batch, CloudFront para cache, lifecycle S3, sizing Aurora adequado, desligar staging em off-hours se possivel.
+## Cost?
+- Spot for node groups and Batch, CloudFront cache, S3 lifecycle, right-sized Aurora, turn off staging off-hours if possible.
 
-## Perguntas da sessao "Entrega" (SRE)
-- Como resolver se a aplicacao nao acessa o banco? Checar secrets/creds (SSM/Secrets), SG/ACL bloqueando porta, parametro de endpoint incorreto, health do Aurora. Ação: revisar SG ingress/egress, rotas, rotação de credenciais, failover Multi-AZ.
-- Como debugar? Logs da app/pod, eventos do RDS, `kubectl exec` e `psql` via bastion, VPC Reachability Analyzer, métricas de conexão/latencia. Replicar em staging com mesmo SG/creds.
-- Como evitar recorrencia? Guardrails: IaC versionado, health checks automáticos, alarms (conexões RDS, 5xx API), rotation automatizada de secrets, testes de integração que validam conexão DB em CI.
-- Como definir SLO/SLI e acompanhar? SLO 99.9% disponibilidade API; SLIs: taxa 2xx/total, latencia p95, erros DB (timeouts/failures), idade fila Batch. Monitorar via CloudWatch/Prometheus + alertas e dashboards, revisando trimestralmente.
+## “Entrega” (SRE) session answers
+- App can’t reach DB? Check secrets/creds (SSM/Secrets), SG/ACL blocking port, bad endpoint param, Aurora health. Action: review SG ingress/egress, routes, credential rotation, Multi-AZ failover.  
+- How to debug? App/pod logs, RDS events, `kubectl exec` + `psql` via bastion, VPC Reachability Analyzer, connection/latency metrics. Reproduce in staging with same SG/creds.  
+- How to avoid recurrence? Guardrails: versioned IaC, automatic health checks, alarms (RDS connections, API 5xx), automated secrets rotation, CI integration tests validating DB connectivity.  
+- How to set/track SLO/SLI? SLO 99.9% API availability; SLIs: 2xx/total, p95 latency, DB errors/timeouts, Batch queue age. Monitor via CloudWatch/Prometheus + alerts/dashboards, review quarterly.

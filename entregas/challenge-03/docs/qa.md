@@ -1,28 +1,28 @@
-# Q&A - Challenge 03 (Flask serverless em Lambda)
+# Q&A - Challenge 03 (Flask serverless on Lambda)
 
-## Por que Lambda + API Gateway?
-- Atende carga variavel sem gerenciar infraestrutura; custo sob demanda; integra com ECR para container. Simples para hello-world e escala automatica.
+## Why Lambda + API Gateway?
+- Handles variable load without managing infrastructure; pay-per-use; integrates with ECR for containers. Simple for hello-world and auto-scales.
 
-## Como passa a variavel NAME?
-- Via env no Terraform/workflow ou SSM SecureString com permissao especifica. Cada alias (staging/prod) pode ter valor diferente. Evitar hardcode em YAML.
+## How is the NAME variable passed?
+- Via env in Terraform/workflow or SSM SecureString with specific permission. Each alias (staging/prod) can have a different value. Avoid hardcoding in YAML.
 
-## Como e o fluxo de CI/CD?
-- GitHub Actions: lint/test -> build/push imagem para ECR -> update-function-code -> update-alias (staging/prod) e setar env NAME. OIDC para assumir role AWS, sem chaves long-lived. Pipelines de app apontam para `entregas/challenge-03/app` (copia mantida em `devops/challenge-03`).
+## What is the CI/CD flow?
+- GitHub Actions: lint/test -> build/push image to ECR -> update-function-code -> update-alias (staging/prod) and set env NAME. OIDC to assume AWS role (no long-lived keys). App pipelines point to `entregas/challenge-03/app` (copy kept in `devops/challenge-03`).
 
-## Observabilidade?
-- CloudWatch Logs para Lambda; alarms para 5xx/latencia no API Gateway e erros da funcao. Opcional X-Ray para tracing.
+## Observability?
+- CloudWatch Logs for Lambda; alarms for API Gateway 5xx/latency and function errors. Optional X-Ray for tracing.
 
-## Segurança?
-- IAM role minimo para Lambda (logs). API Gateway com throttling/WAF opcional. Variaveis sensiveis em SSM/Secrets Manager. Sem public buckets. TLS gerenciado pelo API Gateway.
+## Security?
+- Minimal IAM role for Lambda (logs). API Gateway with throttling/optional WAF. Sensitive vars in SSM/Secrets Manager. No public buckets. TLS managed by API Gateway.
 
-## Como faria rollback?
-- Manter versoes publicadas da Lambda; re-apontar o alias para uma versao anterior. Imagens taggeadas por SHA.
+## How to rollback?
+- Keep published Lambda versions; repoint the alias to a prior version. Images tagged by SHA.
 
-## Dev local?
-- `docker-compose up` com `NAME=Local`; pre-commit (ruff/black) e pytest. Pode usar `sam local start-api` ou `lambda-runtime-interface-emulator` se quiser simular Lambda.
+## Local dev?
+- `docker-compose up` with `NAME=Local`; pre-commit (ruff/black) and pytest. Can use `sam local start-api` or `lambda-runtime-interface-emulator` to simulate Lambda.
 
-## E se o tempo de execucao estourar?
-- Ajustar timeout/memoria. Para workloads mais pesados, mover para App Runner/ECS ou Lambda com mais CPU/mem. Adicionar retries/backoff no cliente se necessario.
+## What if execution time blows up?
+- Increase timeout/memory. For heavier workloads, move to App Runner/ECS or a higher-resourced Lambda. Add retries/backoff on the client if needed.
 
-## Como publicar a documentacao?
-- Workflow `docs.yml` publica `entregas/challenge-03/app/docs/` no GitHub Pages (environment github-pages).
+## How to publish docs?
+- Workflow `docs.yml` publishes `entregas/challenge-03/app/docs/` to GitHub Pages (environment github-pages).

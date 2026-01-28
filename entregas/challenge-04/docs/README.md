@@ -1,10 +1,10 @@
-# Challenge 04 - Visão Geral
+# Challenge 04 - Overview
 
-Arquitetura proposta: Next.js (front) + FastAPI (API) em EKS, RDS Aurora Postgres, buckets S3 (uploads 365d, resultados 5y) com SSE-KMS, Step Functions + Batch para processamento, ECR para imagens, edge opcional (CloudFront/ACM/WAF), observabilidade e segurança alinhadas.
+Proposed architecture: Next.js (front) + FastAPI (API) on EKS, RDS Aurora Postgres, S3 buckets (uploads 365d, results 5y) with SSE-KMS, Step Functions + Batch for processing, ECR for images, optional edge (CloudFront/ACM/WAF), observability and security aligned.
 
-Apps de referência: código em `app/api` (FastAPI) e `app/web` (Next.js), prontos para build/push via pipeline. O front consome a API via `NEXT_PUBLIC_API_BASE` (variável injetada no manifest). Manifests k8s em `k8s/`, IaC em `iac/`.
+Reference apps: code in `app/api` (FastAPI) and `app/web` (Next.js), ready for build/push via pipeline. The front consumes the API via `NEXT_PUBLIC_API_BASE` (variable injected in the manifest). K8s manifests in `k8s/`, IaC in `iac/`.
 
-Como usar:
-1) Ajustar vars/secrets conforme `docs/VARIABLES.md` e `docs/setup_variable.md`.
-2) Executar pipelines `deploy-iac.yml` (Terraform) e `deploy-app.yml` (build/push -> deploy EKS).
-3) Publicar docs com `docs.yml` (Pages).
+How to use:
+1) Adjust vars/secrets per `docs/VARIABLES.md` and `docs/setup_variable.md`.  
+2) Run pipelines `deploy-iac.yml` (Terraform) and `deploy-app.yml` (build/push -> deploy EKS).  
+3) Publish docs with `docs.yml` (Pages).

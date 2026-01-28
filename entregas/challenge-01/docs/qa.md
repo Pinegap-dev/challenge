@@ -1,31 +1,31 @@
-# Q&A - Challenge 01 (FastAPI no ECS Fargate)
+# Q&A - Challenge 01 (FastAPI on ECS Fargate)
 
-## Como voce provisionou a rede?
-- VPC com 2 AZ, sub-redes publicas (ALB/NAT) e privadas (ECS). Rotas publicas via IGW, privadas via NAT. SGs: ALB aberto em 80/443, tasks aceitam 8000 apenas do SG do ALB. DNS/TLS opcional via Route53+ACM.
+## How did you provision the network?
+- VPC with 2 AZs, public subnets (ALB/NAT) and private subnets (ECS). Public routes via IGW, private via NAT. SGs: ALB open on 80/443, tasks accept 8000 only from the ALB SG. DNS/TLS optional via Route53+ACM.
 
-## Por que ECS Fargate e nao EC2/EKS?
-- Fargate remove gestao de nodes, reduz manutencao e custo de idle em ambiente pequeno; atende ao requisito de simplicidade. EKS serviria se houvesse multiplos servicos/sidecars ou necessidade de malha, mas aqui a carga é simples.
+## Why ECS Fargate instead of EC2/EKS?
+- Fargate removes node management, reduces maintenance and idle cost for a small setup; meets the simplicity goal. EKS would fit if there were many services/sidecars or mesh needs, but here the load is simple.
 
-## Onde ficam as credenciais ADMIN_USER/ADMIN_PASS?
-- Ideal: Secrets Manager ou SSM SecureString, injetados na task definition. Terraform pode referenciar `secrets` no container. Rotacao via Secrets Manager.
+## Where are ADMIN_USER/ADMIN_PASS stored?
+- Ideally in Secrets Manager or SSM SecureString, injected in the task definition. Terraform can reference container `secrets`. Rotation via Secrets Manager.
 
-## Como garantir alta disponibilidade?
-- ALB multi-AZ, ECS service com 2+ tasks em sub-redes distintas, health checks. Se usar NAT por AZ, resiliencia de egress. Escala horizontal via target tracking em CPU/mem ou custom metrics.
+## How do you ensure high availability?
+- Multi-AZ ALB, ECS service with 2+ tasks in distinct subnets, health checks. NAT per AZ for resilient egress. Horizontal scale via target tracking on CPU/memory or custom metrics.
 
-## Observabilidade?
-- CloudWatch Logs (grupo /ecs/...), metricas ALB (5xx, latencia), ECS (CPU/mem), alarmes para SNS/Slack. Opcional X-Ray para tracing.
+## Observability?
+- CloudWatch Logs (group /ecs/...), ALB metrics (5xx, latency), ECS (CPU/mem), alarms to SNS/Slack. Optional X-Ray for tracing.
 
-## Segurança?
-- SG least privilege, nenhuma public IP nas tasks, TLS no ALB com ACM, WAF gerenciado opcional. IAM: exec role minimo, task role apenas para ler secret. S3/CloudTrail/Config habilitaveis para auditoria.
+## Security?
+- Least-privilege SGs, no public IP on tasks, TLS on ALB with ACM, optional managed WAF. IAM: minimal exec role, task role only to read the secret. S3/CloudTrail/Config can be enabled for audit.
 
-## Como fazer CI/CD?
-- GitHub Actions: lint/test (se houver) -> build/push ECR -> update task definition -> force new deployment no service. OIDC para evitar chaves long-lived.
+## How to do CI/CD?
+- GitHub Actions: lint/test (if present) -> build/push to ECR -> update task definition -> force new deployment on the service. OIDC to avoid long-lived keys.
 
-## Como versionar e rollback?
-- Imagens taggeadas por SHA/semver, ECS service suporta deployment controller rolling; rollback via redeploy da task definition anterior.
+## How to version and rollback?
+- Images tagged by SHA/semver; ECS service uses rolling deployments; rollback by redeploying the previous task definition.
 
-## Custo e otimizacao?
-- Fargate on-demand com sizing minimo (0.25 vCPU/0.5GB) em dev; reduzir NAT para 1 AZ em hml se aceitavel; desligar logs verbose.
+## Cost and optimization?
+- Fargate on-demand with minimal sizing (0.25 vCPU/0.5GB) in dev; reduce NAT to 1 AZ in staging if acceptable; tone down verbose logs.
 
-## O que muda para prod?
-- TLS/WAF obrigatorios, secrets em Secrets Manager com rotacao, NAT redundante, alarmes e runbooks, backups de configs (tf state, etc).
+## What changes for prod?
+- Mandatory TLS/WAF, secrets in Secrets Manager with rotation, redundant NAT, alarms and runbooks, backups of configs (tf state, etc.).

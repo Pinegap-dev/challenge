@@ -1,34 +1,34 @@
-# Plano de Resposta a Incidentes — Challenge 03 (Flask)
+# Incident Response Plan – Challenge 03 (Flask)
 
-Contexto: App Flask containerizada, deploy serverless em Lambda + API Gateway. Imagem no ECR; env `NAME`; docs em Pages; IaC Terraform (Lambda).
+Context: Flask app containerized, serverless deploy on Lambda + API Gateway. Image in ECR; env `NAME`; docs on Pages; IaC Terraform (Lambda).
 
-1) Detecção e gatilhos  
-- Alarmes: 5xx/latência API Gateway, erros/throttles da Lambda, p95 alta, falhas de rollout, erros de imagem pull.  
-- Segurança: IAM role misuse, mudanças em SG, tráfego anômalo.
+1) Detection and triggers  
+- Alarms: API Gateway 5xx/latency, Lambda errors/throttles, p95 high, rollout failures, image pull errors.  
+- Security: IAM role misuse, SG changes, anomalous traffic.
 
 2) Triage  
-- Identificar superfície afetada (Lambda/API Gateway), ambiente (staging/prod), horário e alcance.  
-- Pausar deploys até estabilizar.
+- Identify affected surface (Lambda/API Gateway), environment (staging/prod), time and scope.  
+- Pause deploys until stable.
 
-3) Contenção  
-- Comprometimento: rotacionar secrets/roles, bloquear endpoint (WAF/throttling) ou restringir SG.  
-- Regressão: rollback do alias da Lambda para versão anterior.
+3) Containment  
+- Compromise: rotate secrets/roles, block endpoint (WAF/throttling) or tighten SG.  
+- Regression: rollback Lambda alias to previous version.
 
-4) Análise e erradicação  
-- Logs: CloudWatch (Lambda), access logs do API Gateway, eventos de rollout.  
-- Infra: checar IAM, SG, rotas; erros de imagem (ECR).  
-- Aplicar fix, gerar nova imagem, testar em staging e promover.
+4) Analysis and eradication  
+- Logs: CloudWatch (Lambda), API Gateway access logs, rollout events.  
+- Infra: check IAM, SG, routes; image errors (ECR).  
+- Apply fix, build new image, test in staging, then promote.
 
-5) Recuperação  
-- Reapontar alias Lambda para a versão corrigida.  
-- Validar saúde: 2xx/latência normal, erros Lambda zerando. Monitorar 24–48h.
+5) Recovery  
+- Point Lambda alias to the fixed version.  
+- Validate health: normal 2xx/latency, Lambda errors clearing. Monitor 24–48h.
 
-6) Comunicação  
-- Status interno e, se impacto ao cliente, externo. Registrar linha do tempo e responsáveis.
+6) Communication  
+- Internal status and, if customer impact, external. Record timeline and owners.
 
-7) Pós-incidente  
-- RCA com causa raiz/contributivas.  
-- Ações: alarmes adicionais (throttles, cold starts anormais), testes de integração no CI, reforço de limits/rate no API Gateway, rotação de secrets, checagens de rollout.
+7) Post-incident  
+- RCA with root/contributing causes.  
+- Actions: extra alarms (throttles, abnormal cold starts), CI integration tests, stronger API Gateway limits/rate, secrets rotation, rollout checks.
 
-8) Artefatos úteis  
-- Pipelines `deploy-iac.yml`, `deploy-app.yml`, `devops/challenge-03/.github/workflows/ci-cd.yml`; IaC Lambda em `entregas/challenge-03/iac/`; imagens versionadas no ECR.
+8) Useful artifacts  
+- Pipelines `deploy-iac.yml`, `deploy-app.yml`, `devops/challenge-03/.github/workflows/ci-cd.yml`; Lambda IaC in `entregas/challenge-03/iac/`; versioned images in ECR.

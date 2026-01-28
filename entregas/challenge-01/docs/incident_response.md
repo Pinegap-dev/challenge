@@ -1,35 +1,35 @@
-# Plano de Resposta a Incidentes – Challenge 01 (FastAPI em ECS Fargate)
+# Incident Response Plan – Challenge 01 (FastAPI on ECS Fargate)
 
-Contexto: API FastAPI containerizada, deploy em ECS Fargate atrás de ALB. Imagem no ECR; credenciais `ADMIN_USER`/`ADMIN_PASS` definidas via Terraform (recomendado usar Secrets Manager com rotation). Infra: VPC 2 AZ, ALB público, service ECS.
+Context: FastAPI container deployed on ECS Fargate behind an ALB. Image in ECR; `ADMIN_USER`/`ADMIN_PASS` defined via Terraform (recommended: Secrets Manager with rotation). Infra: 2-AZ VPC, public ALB, ECS service.
 
-1) Detecção e gatilhos
-- CloudWatch Alarms: 5xx/latência alta no ALB, `ECS Service Desired vs Running` divergente, falhas de tarefa (StoppedReason).
-- Segurança: alterações suspeitas em SG/NACL, IAM role misuse, tráfego anômalo no ALB/WAF (se habilitado).
+1) Detection and triggers
+- CloudWatch Alarms: ALB 5xx/latency high, `ECS Service Desired vs Running` divergence, task failures (StoppedReason).
+- Security: suspicious SG/NACL changes, IAM role misuse, anomalous traffic on ALB/WAF (if enabled).
 
-2) Triage inicial
-- Identificar ambiente (staging/prod), início e alcance (ALB target health, tasks afetadas, sub-redes).
-- Congelar deploys não críticos (pausar pipeline de app).
+2) Initial triage
+- Identify environment (staging/prod), start time, and blast radius (ALB target health, affected tasks, subnets).
+- Freeze non-critical deploys (pause app pipeline).
 
-3) Contenção imediata
-- Comprometimento: rotacionar secrets (`ADMIN_USER/PASS`), apertar SG para bloquear origens suspeitas.
-- Erro/crash: reduzir tráfego (deregister targets) ou scale down temporário; reverter para última task definition estável (`aws ecs update-service ... --task-definition <revision-boa>`).
+3) Immediate containment
+- Compromise: rotate secrets (`ADMIN_USER/PASS`), tighten SG to block suspicious sources.
+- Error/crash: reduce traffic (deregister targets) or temporary scale down; roll back to last stable task definition (`aws ecs update-service ... --task-definition <good-revision>`).
 
-4) Análise e erradicação
-- Logs CloudWatch do service (`/ecs/<service>`) e eventos do ALB (target health). Checar health check no ALB.
-- Conferir SG, rotas, dependências externas (ECR pull, DNS, NAT).
-- Criar hotfix, gerar nova imagem, validar em staging antes de prod.
+4) Analysis and eradication
+- CloudWatch logs for the service (`/ecs/<service>`) and ALB events (target health). Check ALB health checks.
+- Verify SG, routes, external dependencies (ECR pull, DNS, NAT).
+- Build hotfix, push new image, validate in staging before prod.
 
-5) Recuperação
-- Atualizar service ECS com a task definition corrigida; restaurar desired count.
-- Validar saúde (targets healthy, 2xx e latência normal). Monitorar reforçado por 24–48h.
+5) Recovery
+- Update ECS service with the fixed task definition; restore desired count.
+- Validate health (targets healthy, 2xx and normal latency). Monitor closely for 24–48h.
 
-6) Comunicação
-- Canal interno de incidentes; externo (status page) se aplicável.
-- Registrar linha do tempo e responsáveis; abrir postmortem.
+6) Communication
+- Internal incident channel; external (status page) if applicable.
+- Record timeline and owners; open postmortem.
 
-7) Pós-incidente
-- RCA documentado (causas raiz e contributivas).
-- Ações preventivas: mover secrets para Secrets Manager com rotation, alarms adicionais (CPU/mem por tarefa, 5xx do ALB), WAF/Rate limiting se ausentes, testes de integração cobrindo autenticação/admin.
+7) Post-incident
+- Document RCA (root and contributing causes).
+- Preventive actions: move secrets to Secrets Manager with rotation, add alarms (CPU/mem per task, ALB 5xx), WAF/Rate limiting if missing, integration tests covering auth/admin.
 
-8) Artefatos úteis
-- Imagens versionadas (SHA) no ECR; pipelines `.github/workflows/deploy-iac.yml` e `deploy-app.yml`; Terraform state/outputs do ambiente; histórico de health do ALB.
+8) Useful artifacts
+- Versioned images (SHA) in ECR; pipelines `.github/workflows/deploy-iac.yml` and `deploy-app.yml`; Terraform state/outputs; ALB health history.
